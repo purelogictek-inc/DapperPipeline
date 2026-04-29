@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/DapperPipeline.Benchmarks/DapperPipeline.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DapperPipeline/DapperPipeline.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DapperPipeline.Tests/DapperPipeline.Tests.csproj" />
+  </Folder>
+</Solution>

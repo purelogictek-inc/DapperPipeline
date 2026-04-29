@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <RootNamespace>DapperPipeline</RootNamespace>
+    <AssemblyName>DapperPipeline</AssemblyName>
+    <!-- NuGet -->
+    <PackageId>DapperPipeline</PackageId>
+    <Version>1.0.0</Version>
+    <Description>SQL orchestration layer for Dapper — fluent multi-command transactions, auto-scoped parameters, retry, and multi-result-set mapping.</Description>
+    <Authors>Chris Erker</Authors>
+    <PackageTags>dapper;sql;sqlserver;pipeline;cqrs</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup Label="Core">
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Polly" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup Label="Dialects">
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+
+</Project>
