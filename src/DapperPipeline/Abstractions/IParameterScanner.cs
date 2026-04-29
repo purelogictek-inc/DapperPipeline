@@ -1,7 +1,7 @@
 namespace DapperPipeline.Abstractions;
 
 /// <summary>
-/// Scans the literal portions of a SQL string emitted by <see cref="IQueryBuilder.Append"/>'s
+/// Scans the literal portions of a SQL string emitted by <c>IQueryBuilder.Append</c>'s
 /// interpolation handler, registers DECLARE'd variables into the scoped param set, and rewrites
 /// all scoped <c>@param</c> tokens with a per-command scope prefix to prevent name collisions
 /// when multiple commands are batched into a single SQL string.

@@ -3,6 +3,7 @@ using System.Dynamic;
 using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
+using DapperPipeline.Interpolation;
 
 namespace DapperPipeline.QueryBuilding;
 using Abstractions;
@@ -17,6 +18,11 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
 
     // Per-command state — reset by BeginCommandScope()
     private readonly HashSet<string> _scopedParams = [];
+    private readonly ParamNameRegistry _registry = new();
+
+    // Pipeline-wide value index for cross-command bind-time deduplication.
+    // Keyed by parameter value (using the value's own Equals); value is the parameter name (with @ prefix).
+    private readonly Dictionary<object, string> _valueIndex = new(new ValueEqualityComparer());
 
     private int _scopeIndex;
 
@@ -28,6 +34,7 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     {
         _scopeIndex = scopeIndex;
         _scopedParams.Clear();
+        _registry.Reset();
     }
 
     // Keep internal accessor for tests (InternalsVisibleTo)
@@ -35,6 +42,7 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     {
         _scopeIndex = scopeIndex;
         _scopedParams.Clear();
+        _registry.Reset();
     }
 
     // -------------------------------------------------------------------------
@@ -55,16 +63,102 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         return UpdateSql(processed, !_insideCte, true);
     }
 
-    public IQueryBuilder Append(string command)
+    public IQueryBuilder AppendRaw(string sql)
     {
-        var processed = scanner.Process(command, _scopeIndex, _scopedParams);
-        return UpdateSql(processed, false, false);
+        if (string.IsNullOrEmpty(sql)) return this;
+        return UpdateSql(sql, false, false);
     }
 
     public IQueryBuilder Replace(string key, object clause)
     {
         _fullSql = _fullSql.Replace($"%%{key.ToUpper()}%%", clause.ToString());
         return this;
+    }
+
+    // -------------------------------------------------------------------------
+    // Handler-dispatch surface (called by SqlInterpolatedHandler, not by user code)
+    // -------------------------------------------------------------------------
+
+    public void AppendScannedLiteral(string literal)
+    {
+        if (string.IsNullOrEmpty(literal)) return;
+        var processed = scanner.Process(literal, _scopeIndex, _scopedParams);
+        _fullSql.Append(processed);
+    }
+
+    public void AppendIdentifier(string identifier)
+    {
+        if (string.IsNullOrEmpty(identifier)) return;
+        _fullSql.Append(identifier);
+    }
+
+    public void BindAndEmit(object? value, string callerExpr)
+    {
+        // Cross-command value dedup — null doesn't dedupe (each null bind gets a fresh name)
+        if (value is not null && _valueIndex.TryGetValue(value, out var existing))
+        {
+            _fullSql.Append(existing);
+            return;
+        }
+
+        // Auto-name with tier escalation
+        foreach (var sanitized in ParamNameSanitizer.GenerateCandidates(callerExpr))
+        {
+            var fullName = $"@p{_scopeIndex:D3}_{sanitized}";
+            if (_registry.TryClaim(fullName, callerExpr))
+            {
+                if (_parameters.TryGetValue(fullName, out var bound) && !Equals(bound, value))
+                    throw new InvalidOperationException(
+                        $"Parameter '{fullName}' bound twice with different values for expression '{callerExpr}'.");
+
+                _parameters[fullName] = value;
+                if (value is not null) _valueIndex[value] = fullName;
+                _fullSql.Append(fullName);
+                return;
+            }
+            // Collision with different expression — try next tier
+        }
+
+        throw new InvalidOperationException(
+            $"Cannot generate a unique parameter name for '{callerExpr}'; all candidates collide " +
+            $"with already-claimed names in this command's scope. Rename the local variable.");
+    }
+
+    public void BindShared(object? value, string name)
+    {
+        var fullName = name.StartsWith('@') ? name : $"@{name}";
+
+        // Lazy materialization — only add to _parameters on first reference
+        if (!_parameters.ContainsKey(fullName))
+        {
+            _parameters[fullName] = value;
+            if (value is not null) _valueIndex[value] = fullName;
+        }
+        else if (value is not null && _parameters.TryGetValue(fullName, out var existing) && !Equals(existing, value))
+        {
+            throw new InvalidOperationException(
+                $"Shared parameter '{fullName}' bound twice with different values. " +
+                $"Use distinct names across state POCOs and Bind calls.");
+        }
+
+        _fullSql.Append(fullName);
+    }
+
+    /// <summary>
+    /// Equality comparer for the value-dedup index. Delegates to <c>x.Equals(y)</c>, which gives
+    /// value equality for primitives and records, reference equality for plain classes — the
+    /// right behavior for each.
+    /// </summary>
+    private sealed class ValueEqualityComparer : IEqualityComparer<object>
+    {
+        public new bool Equals(object? x, object? y)
+        {
+            if (x is null || y is null) return ReferenceEquals(x, y);
+            if (x.GetType() != y.GetType()) return false;
+            return x.Equals(y);
+        }
+
+        public int GetHashCode(object obj) => obj?.GetHashCode() ?? 0;
     }
 
     // -------------------------------------------------------------------------
@@ -147,7 +241,7 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         _insideCte = true;
 
         if (!description.IsEmpty())
-            Append($"--{description}");
+            AppendRaw($"--{description}");
 
         var with = first ? $"WITH {name}" : name;
         if (fields.IsEmpty())
@@ -198,6 +292,8 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         _fullSql.Clear();
         _parameters = new ExpandoObject();
         _scopedParams.Clear();
+        _registry.Reset();
+        _valueIndex.Clear();
     }
 
     // -------------------------------------------------------------------------

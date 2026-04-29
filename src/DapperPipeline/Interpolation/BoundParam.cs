@@ -6,17 +6,18 @@ namespace DapperPipeline.Interpolation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Internal type. Consumers never construct or declare <see cref="BoundParam{T}"/> directly —
-/// it surfaces only as the return type of <c>state.Bound&lt;T&gt;(name)</c>, where it's passed
-/// straight into an interpolation hole. The interpolation handler's
+/// Surfaces only as the return type of <c>state.Bound&lt;T&gt;(name)</c> for direct use in
+/// an interpolation hole. The <see cref="SqlInterpolatedHandler"/>'s
 /// <c>AppendFormatted&lt;T&gt;(BoundParam&lt;T&gt;)</c> overload extracts <see cref="Name"/>
-/// and emits <c>@{Name}</c> directly, materializing the parameter on first reference.
+/// and emits <c>@{Name}</c>, materializing the parameter on first reference.
+/// </para>
+/// <para>
+/// Do not declare <see cref="BoundParam{T}"/> as a property type on state POCOs —
+/// <c>SetState&lt;T&gt;</c> reflects plain scalar properties; wrap-typed properties are not
+/// part of the supported model. Library types should not leak into domain code.
 /// </para>
 /// <para>
 /// <see cref="Name"/> is the SQL parameter name <em>without</em> the leading <c>@</c> sigil.
 /// </para>
 /// </remarks>
-internal readonly record struct BoundParam<T>(string Name, T Value);
-
-/// <summary>Non-generic facade over <see cref="BoundParam{T}"/> for the bindings registry.</summary>
-internal readonly record struct BoundParam(string Name, object? Value);
+public readonly record struct BoundParam<T>(string Name, T Value);

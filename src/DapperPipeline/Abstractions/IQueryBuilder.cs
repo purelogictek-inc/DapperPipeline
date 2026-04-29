@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Data;
 
 namespace DapperPipeline.Abstractions;
@@ -32,13 +33,44 @@ public interface IQueryBuilder
     IQueryBuilder Add(string command);
 
     /// <summary>
-    /// Appends SQL inline (no trailing semicolon or newline).
-    /// Use inside CTE blocks or for partial SQL fragments.
+    /// Appends a SQL fragment verbatim, bypassing both the interpolation handler and the
+    /// parameter scanner. The explicit, code-reviewable escape hatch for SQL that genuinely
+    /// cannot be parameterized (DDL keywords, dynamic ORDER BY, etc.). For typed-safe SQL
+    /// composition with parameter binding, use the <c>Append($"...")</c> extension method.
     /// </summary>
-    IQueryBuilder Append(string command);
+    IQueryBuilder AppendRaw(string sql);
 
     /// <summary>Replaces a placeholder token in the accumulated SQL.</summary>
     IQueryBuilder Replace(string key, object clause);
+
+    // -------------------------------------------------------------------------
+    // Handler-dispatch surface (called by SqlInterpolatedHandler, not by user code)
+    // Hidden from IntelliSense via [EditorBrowsable(Never)].
+    // -------------------------------------------------------------------------
+
+    /// <summary>Routes a literal SQL portion through the dialect's parameter scanner and appends it.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    void AppendScannedLiteral(string literal);
+
+    /// <summary>Appends a pre-validated SQL identifier verbatim (no quoting, no scanning).</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    void AppendIdentifier(string identifier);
+
+    /// <summary>
+    /// Binds a value with an auto-generated parameter name derived from <paramref name="callerExpr"/>,
+    /// then appends a parameter reference (e.g. <c>@p001_OrderId</c>) to the SQL. If the same
+    /// value is already bound (anywhere in the pipeline), reuses the existing parameter name.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    void BindAndEmit(object? value, string callerExpr);
+
+    /// <summary>
+    /// Binds a value under an explicit name (from a <c>BoundParam&lt;T&gt;</c> or
+    /// <c>pipeline.Bind</c> registration) and appends the parameter reference to the SQL.
+    /// Lazy: the value enters the parameter dictionary only on first reference.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    void BindShared(object? value, string name);
 
     // -------------------------------------------------------------------------
     // Table-valued parameters
