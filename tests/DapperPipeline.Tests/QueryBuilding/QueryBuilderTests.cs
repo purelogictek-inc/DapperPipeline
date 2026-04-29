@@ -13,7 +13,7 @@ public sealed class QueryBuilderTests
     public QueryBuilderTests()
     {
         _scanner = Substitute.For<IParameterScanner>();
-        _scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>(), Arg.Any<IReadOnlySet<string>>())
+        _scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>())
             .Returns(ci => (string)ci[0]);
         _qb = new QueryBuilder(_scanner);
         _qb.BeginCommandScope(0);

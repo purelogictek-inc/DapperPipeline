@@ -18,9 +18,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     // Per-command state — reset by BeginCommandScope()
     private readonly HashSet<string> _scopedParams = [];
 
-    // Shared params from IPipelineState — always empty in v1; reserved for future use
-    private IReadOnlySet<string> _sharedParams = new HashSet<string>();
-
     private int _scopeIndex;
 
     // -------------------------------------------------------------------------
@@ -32,9 +29,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         _scopeIndex = scopeIndex;
         _scopedParams.Clear();
     }
-
-    void Pipeline.IQueryBuilderInternal.SetSharedParams(IReadOnlySet<string> sharedParams) =>
-        _sharedParams = sharedParams;
 
     // Keep internal accessor for tests (InternalsVisibleTo)
     internal void BeginCommandScope(int scopeIndex)
@@ -57,13 +51,13 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
 
     public IQueryBuilder Add(string command)
     {
-        var processed = scanner.Process(command, _scopeIndex, _scopedParams, _sharedParams);
+        var processed = scanner.Process(command, _scopeIndex, _scopedParams);
         return UpdateSql(processed, !_insideCte, true);
     }
 
     public IQueryBuilder Append(string command)
     {
-        var processed = scanner.Process(command, _scopeIndex, _scopedParams, _sharedParams);
+        var processed = scanner.Process(command, _scopeIndex, _scopedParams);
         return UpdateSql(processed, false, false);
     }
 

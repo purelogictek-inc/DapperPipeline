@@ -11,7 +11,7 @@ public sealed class WhereBuilderTests
     public WhereBuilderTests()
     {
         var scanner = Substitute.For<IParameterScanner>();
-        scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>(), Arg.Any<IReadOnlySet<string>>())
+        scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>())
             .Returns(ci => (string)ci[0]);
         _qb = new QueryBuilder(scanner);
         _qb.BeginCommandScope(0);

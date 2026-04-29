@@ -5,19 +5,19 @@ using Npgsql;
 namespace DapperPipeline.Dialects.PostgreSql;
 
 /// <summary>
-/// Database dialect for PostgresSQL via Npgsql.
+/// Database dialect for PostgreSQL via Npgsql.
 /// Retry on: transient errors as indicated by <see cref="NpgsqlException.IsTransient"/>.
 /// <c>ExtractErrorCode</c> returns 0 — use a custom <c>IErrorMapper</c> that inspects
 /// <c>PostgresException.SqlState</c> for business error handling.
 /// Note: PostgreSQL has no table variables — use CTEs instead of <c>DECLARE @Var TABLE</c>.
 /// </summary>
-public sealed class PostgresSqlDialect : IDatabaseDialect
+public sealed class PostgreSqlDialect : IDatabaseDialect
 {
     private readonly string _connectionString;
-    private readonly PostgresSqlParameterScanner _scanner = new();
+    private readonly PostgreSqlParameterScanner _scanner = new();
 
-    /// <inheritdoc cref="PostgresSqlDialect"/>
-    public PostgresSqlDialect(string connectionString)
+    /// <inheritdoc cref="PostgreSqlDialect"/>
+    public PostgreSqlDialect(string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         _connectionString = connectionString;

@@ -24,7 +24,7 @@ internal sealed partial class SqlServerParameterScanner : IParameterScanner
     private static partial Regex MyRegex();
 
     /// <inheritdoc />
-    public string Process(string sql, int scopeIndex, ISet<string> scopedParams, IReadOnlySet<string> sharedParams)
+    public string Process(string sql, int scopeIndex, ISet<string> scopedParams)
     {
         if (string.IsNullOrEmpty(sql)) return sql;
 
@@ -43,7 +43,7 @@ internal sealed partial class SqlServerParameterScanner : IParameterScanner
                 var paramToken = match.Groups[1].Value;        // e.g. "@Identifiers"
                 var paramName = paramToken[1..];               // e.g. "Identifiers"
                 scopedParams.Add(paramName);
-                var rewritten = $"@{paramName}_{scopeIndex}";
+                var rewritten = $"@p{scopeIndex:D3}_{paramName}";
                 // Replace only the @Word part within the full DECLARE match
                 sb.Append(match.Value.Replace(paramToken, rewritten));
             }
@@ -58,15 +58,13 @@ internal sealed partial class SqlServerParameterScanner : IParameterScanner
                 var paramToken = match.Groups[3].Value;        // e.g. "@BranchId"
                 var paramName = paramToken[1..];               // e.g. "BranchId"
 
-                if (sharedParams.Contains(paramName))
-                    sb.Append(paramToken); // shared — leave as-is
-                else if (scopedParams.Contains(paramName))
-                    sb.Append($"@{paramName}_{scopeIndex}"); // scoped — rewrite
+                if (scopedParams.Contains(paramName))
+                    sb.Append($"@p{scopeIndex:D3}_{paramName}"); // scoped — rewrite
                 else
                     throw new InvalidOperationException(
-                        $"Unknown parameter '{paramToken}' in SQL. " +
-                        $"Register it with builder.Add(\"{paramToken}\", value) before using it in SQL, " +
-                        $"or add it to IPipelineState if it should be shared across commands.");
+                        $"Unknown parameter '{paramToken}' in SQL literal. " +
+                        $"Pass the value through an interpolation hole instead (e.g. Append($\"... = {{value}}\")). " +
+                        $"Raw @Word references in literal SQL are only valid for DECLARE'd variables.");
             }
             else
             {

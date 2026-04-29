@@ -19,7 +19,7 @@ internal sealed partial class SqliteParameterScanner : IParameterScanner
     private static partial Regex MyRegex();
 
     /// <inheritdoc />
-    public string Process(string sql, int scopeIndex, ISet<string> scopedParams, IReadOnlySet<string> sharedParams)
+    public string Process(string sql, int scopeIndex, ISet<string> scopedParams)
     {
         if (string.IsNullOrEmpty(sql)) return sql;
 
@@ -41,20 +41,16 @@ internal sealed partial class SqliteParameterScanner : IParameterScanner
             var paramToken = match.Groups[1].Value;    // e.g. "@BranchId", "$id", ":name"
             var paramName = paramToken[1..];           // strip prefix char
 
-            if (sharedParams.Contains(paramName))
+            if (scopedParams.Contains(paramName))
             {
-                sb.Append(paramToken);
-            }
-            else if (scopedParams.Contains(paramName))
-            {
-                sb.Append($"@{paramName}_{scopeIndex}");
+                sb.Append($"@p{scopeIndex:D3}_{paramName}");
             }
             else
             {
                 throw new InvalidOperationException(
-                    $"Unknown parameter '{paramToken}' in SQL. " +
-                    $"Register it with builder.Add(\"{paramToken}\", value) before using it in SQL, " +
-                    $"or add it to IPipelineState if it should be shared across commands.");
+                    $"Unknown parameter '{paramToken}' in SQL literal. " +
+                    $"Pass the value through an interpolation hole instead (e.g. Append($\"... = {{value}}\")). " +
+                    $"Raw @Word references in literal SQL are only valid for DECLARE'd variables.");
             }
         }
 

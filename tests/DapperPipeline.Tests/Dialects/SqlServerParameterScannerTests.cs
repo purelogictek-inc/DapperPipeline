@@ -6,8 +6,8 @@ public sealed class SqlServerParameterScannerTests
 {
     private readonly SqlServerParameterScanner _scanner = new();
 
-    private string Process(string sql, ISet<string>? scoped = null, IReadOnlySet<string>? shared = null) =>
-        _scanner.Process(sql, scopeIndex: 2, scoped ?? new HashSet<string>(), shared ?? new HashSet<string>());
+    private string Process(string sql, ISet<string>? scoped = null) =>
+        _scanner.Process(sql, scopeIndex: 2, scoped ?? new HashSet<string>());
 
     // --- Basic rewriting ---
 
@@ -16,15 +16,7 @@ public sealed class SqlServerParameterScannerTests
     {
         var scoped = new HashSet<string> { "BranchId" };
         var result = Process("SELECT * FROM Branch WHERE Id = @BranchId", scoped);
-        Assert.Equal("SELECT * FROM Branch WHERE Id = @BranchId_2", result);
-    }
-
-    [Fact]
-    public void SharedParam_IsLeftAsIs()
-    {
-        var shared = new HashSet<string> { "TenantId" };
-        var result = Process("SELECT * FROM Branch WHERE TenantId = @TenantId", shared: shared);
-        Assert.Equal("SELECT * FROM Branch WHERE TenantId = @TenantId", result);
+        Assert.Equal("SELECT * FROM Branch WHERE Id = @p002_BranchId", result);
     }
 
     [Fact]
@@ -43,7 +35,7 @@ public sealed class SqlServerParameterScannerTests
         var result = Process("DECLARE @Ids TABLE (Id bigint)", scoped);
 
         Assert.Contains("Ids", scoped);
-        Assert.Equal("DECLARE @Ids_2 TABLE (Id bigint)", result);
+        Assert.Equal("DECLARE @p002_Ids TABLE (Id bigint)", result);
     }
 
     [Fact]
@@ -58,7 +50,7 @@ public sealed class SqlServerParameterScannerTests
 
         var result = Process(sql, scoped);
 
-        Assert.Contains("@Ids_2", result);
+        Assert.Contains("@p002_Ids", result);
         Assert.DoesNotContain("@Ids\n", result);
         Assert.DoesNotContain("@Ids\r", result);
     }
@@ -70,7 +62,7 @@ public sealed class SqlServerParameterScannerTests
         var result = Process("DECLARE @ErrorMsg NVARCHAR(MAX)", scoped);
 
         Assert.Contains("ErrorMsg", scoped);
-        Assert.Equal("DECLARE @ErrorMsg_2 NVARCHAR(MAX)", result);
+        Assert.Equal("DECLARE @p002_ErrorMsg NVARCHAR(MAX)", result);
     }
 
     // --- System variables ---
@@ -87,7 +79,7 @@ public sealed class SqlServerParameterScannerTests
     {
         var scoped = new HashSet<string> { "Count" };
         var result = Process("SET @Count = @@ROWCOUNT", scoped);
-        Assert.Equal("SET @Count_2 = @@ROWCOUNT", result);
+        Assert.Equal("SET @p002_Count = @@ROWCOUNT", result);
     }
 
     // --- Quoted strings and comments ---
@@ -104,7 +96,7 @@ public sealed class SqlServerParameterScannerTests
     {
         var scoped = new HashSet<string> { "RealParam" };
         var result = Process("SELECT @RealParam -- @NotAParam", scoped);
-        Assert.Equal("SELECT @RealParam_2 -- @NotAParam", result);
+        Assert.Equal("SELECT @p002_RealParam -- @NotAParam", result);
     }
 
     [Fact]
@@ -112,7 +104,7 @@ public sealed class SqlServerParameterScannerTests
     {
         var scoped = new HashSet<string> { "RealParam" };
         var result = Process("SELECT @RealParam /* @NotAParam */", scoped);
-        Assert.Equal("SELECT @RealParam_2 /* @NotAParam */", result);
+        Assert.Equal("SELECT @p002_RealParam /* @NotAParam */", result);
     }
 
     // --- Multiple params in one SQL string ---
@@ -122,16 +114,7 @@ public sealed class SqlServerParameterScannerTests
     {
         var scoped = new HashSet<string> { "BranchId", "UserId" };
         var result = Process("SELECT @BranchId, @UserId", scoped);
-        Assert.Equal("SELECT @BranchId_2, @UserId_2", result);
-    }
-
-    [Fact]
-    public void MixedScopedAndShared_RewrittenCorrectly()
-    {
-        var scoped = new HashSet<string> { "OrderId" };
-        var shared = new HashSet<string> { "TenantId" };
-        var result = Process("WHERE TenantId = @TenantId AND Id = @OrderId", scoped, shared);
-        Assert.Equal("WHERE TenantId = @TenantId AND Id = @OrderId_2", result);
+        Assert.Equal("SELECT @p002_BranchId, @p002_UserId", result);
     }
 
     // --- Empty / null ---

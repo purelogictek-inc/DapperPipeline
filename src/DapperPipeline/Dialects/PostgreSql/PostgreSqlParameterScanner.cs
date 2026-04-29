@@ -5,10 +5,10 @@ using DapperPipeline.Abstractions;
 namespace DapperPipeline.Dialects.PostgreSql;
 
 /// <summary>
-/// Parameter scanner for PostgresSQL via Npgsql named parameter mode (<c>@Word</c> style).
-/// No DECLARE detection — PostgresSQL has no table variables; use CTEs instead.
+/// Parameter scanner for PostgreSQL via Npgsql named parameter mode (<c>@Word</c> style).
+/// No DECLARE detection — PostgreSQL has no table variables; use CTEs instead.
 /// </summary>
-internal sealed partial class PostgresSqlParameterScanner : IParameterScanner
+internal sealed partial class PostgreSqlParameterScanner : IParameterScanner
 {
     // Npgsql supports @Word named parameters as a convenience mapping.
     // No DECLARE @Var TABLE equivalent exists in PostgreSQL.
@@ -18,7 +18,7 @@ internal sealed partial class PostgresSqlParameterScanner : IParameterScanner
     private static partial Regex MyRegex();
 
     /// <inheritdoc />
-    public string Process(string sql, int scopeIndex, ISet<string> scopedParams, IReadOnlySet<string> sharedParams)
+    public string Process(string sql, int scopeIndex, ISet<string> scopedParams)
     {
         if (string.IsNullOrEmpty(sql)) return sql;
 
@@ -39,15 +39,13 @@ internal sealed partial class PostgresSqlParameterScanner : IParameterScanner
             var paramToken = match.Groups[1].Value; // e.g. "@BranchId"
             var paramName = paramToken[1..]; // e.g. "BranchId"
 
-            if (sharedParams.Contains(paramName))
-                sb.Append(paramToken);
-            else if (scopedParams.Contains(paramName))
-                sb.Append($"@{paramName}_{scopeIndex}");
+            if (scopedParams.Contains(paramName))
+                sb.Append($"@p{scopeIndex:D3}_{paramName}");
             else
                 throw new InvalidOperationException(
-                    $"Unknown parameter '{paramToken}' in SQL. " +
-                    $"Register it with builder.Add(\"{paramToken}\", value) before using it in SQL, " +
-                    $"or add it to IPipelineState if it should be shared across commands.");
+                    $"Unknown parameter '{paramToken}' in SQL literal. " +
+                    $"Pass the value through an interpolation hole instead (e.g. Append($\"... = {{value}}\")). " +
+                    $"Raw @Word references in literal SQL are only valid for DECLARE'd variables.");
         }
 
         sb.Append(sql, lastIndex, sql.Length - lastIndex);
