@@ -33,7 +33,7 @@ internal sealed class DapperPipeline(
     // -------------------------------------------------------------------------
 
     /// <inheritdoc/>
-    public IDapperPipeline Context(Action<IDapperPipelineContext> setup)
+    public IDapperPipeline Context(Action<IDapperPipelineContext>? setup)
     {
         setup?.Invoke(_context);
         return this;
@@ -65,7 +65,7 @@ internal sealed class DapperPipeline(
     // -------------------------------------------------------------------------
 
     /// <inheritdoc/>
-    public IDapperPipeline Register(IQueryCommand command)
+    public IDapperPipeline Register(IQueryCommand? command)
     {
         if (command == null) return this;
 
@@ -78,7 +78,7 @@ internal sealed class DapperPipeline(
         }
 
         if (!queryBuilder.HasQuery)
-            queryBuilder.Add("SET NOCOUNT ON");
+            queryBuilder.AppendRaw("SET NOCOUNT ON;\n");
 
         queryBuilder.BeginCommandScope(_scopeIndex++);
         command.Build(queryBuilder, _state);

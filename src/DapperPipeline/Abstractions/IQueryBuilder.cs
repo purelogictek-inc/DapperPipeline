@@ -4,33 +4,22 @@ using System.Data;
 namespace DapperPipeline.Abstractions;
 
 /// <summary>
-/// Fluent SQL builder. Commands call this in their <c>Build</c> method to register
-/// parameters and append SQL. The pipeline batches all commands into a single SQL string
-/// and executes them in one round-trip within a transaction.
+/// Fluent SQL builder. Commands call this in their <c>Build</c> method to compose SQL via
+/// <c>Append($"...")</c> interpolation (the primary API) or <c>AppendRaw(string)</c> (the
+/// escape hatch). The pipeline batches all commands into a single SQL string and executes
+/// them in one round-trip within a transaction.
 /// </summary>
 /// <remarks>
-/// Parameter names are passed without the <c>@</c> prefix to <see cref="Add(string,object)"/>,
-/// or with the prefix in SQL strings passed to <see cref="Add(string)"/>.
-/// The builder's parameter scanner rewrites scoped parameters automatically — commands do not
-/// need to manage name collisions between batched commands.
+/// Parameter binding is implicit — values flow through interpolation holes, where the
+/// handler auto-parameterizes them with names derived from the caller expression. Per-command
+/// scope prefixes (<c>@p001_</c>, <c>@p002_</c>) prevent name collisions between batched
+/// commands. Cross-command value deduplication ensures identical values bind only once.
 /// </remarks>
 public interface IQueryBuilder
 {
     // -------------------------------------------------------------------------
-    // Parameters
+    // SQL composition
     // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Registers a named parameter. The name should include the <c>@</c> prefix.
-    /// The scanner will rewrite it in subsequent SQL strings with the command's scope suffix.
-    /// </summary>
-    IQueryBuilder Add(string paramName, object? paramValue);
-
-    /// <summary>
-    /// Appends a SQL statement. The scanner processes all <c>@param</c> tokens,
-    /// rewrites scoped parameters, and throws on unknown ones.
-    /// </summary>
-    IQueryBuilder Add(string command);
 
     /// <summary>
     /// Appends a SQL fragment verbatim, bypassing both the interpolation handler and the
@@ -113,7 +102,7 @@ public interface IQueryBuilder
 
     /// <summary>
     /// Builds a WHERE / JOIN clause. The returned <see cref="IWhereBuilder"/> can be embedded
-    /// in a subsequent <see cref="Add(string)"/> call via its <c>ToString()</c>.
+    /// in a subsequent <c>Append($"...")</c> call via its <c>ToString()</c>.
     /// </summary>
     IWhereBuilder Where(Action<IWhereBuilder>? builder = null, bool upCase = false);
 

@@ -12,7 +12,6 @@ using Utilities;
 internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline.IQueryBuilderInternal
 {
     private int _indents;
-    private bool _insideCte;
     private StringBuilder _fullSql = new();
     private IDictionary<string, object?> _parameters = new ExpandoObject();
 
@@ -58,20 +57,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     // -------------------------------------------------------------------------
     // IQueryBuilder — parameters
     // -------------------------------------------------------------------------
-
-    public IQueryBuilder Add(string paramName, object? paramValue)
-    {
-        var name = paramName.TrimStart('@');
-        _scopedParams.Add(name);
-        _parameters[$"{name}_{_scopeIndex}"] = paramValue;
-        return this;
-    }
-
-    public IQueryBuilder Add(string command)
-    {
-        var processed = scanner.Process(command, _scopeIndex, _scopedParams);
-        return UpdateSql(processed, !_insideCte, true);
-    }
 
     public IQueryBuilder AppendRaw(string sql)
     {
@@ -181,11 +166,11 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         var mapper = new ClassToDataTableMapper<T>();
         setup(mapper);
         var table = mapper.Fill(source);
-        return Add(paramName, table.AsTableValuedParameter($"dbo.{tableType}"));
+        return RegisterTableParam(paramName, table.AsTableValuedParameter($"dbo.{tableType}"));
     }
 
     public IQueryBuilder AddTableParam(string paramName, DataTable table)
-        => Add(paramName, table);
+        => RegisterTableParam(paramName, table);
 
     public IQueryBuilder AddTableParam<T>(string paramName, IEnumerable<T> values, string columnName = "Id")
     {
@@ -193,7 +178,20 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         table.Columns.Add(columnName, typeof(T));
         foreach (var v in values)
             table.Rows.Add(v);
-        return Add(paramName, table);
+        return RegisterTableParam(paramName, table);
+    }
+
+    /// <summary>
+    /// Registers a table-valued parameter under a per-command-scoped name. The bare name
+    /// (without <c>@</c>) joins the scoped-params set so the scanner rewrites <c>@name</c>
+    /// references in subsequent literal SQL to <c>@p{NNN}_name</c>.
+    /// </summary>
+    private IQueryBuilder RegisterTableParam(string paramName, object? value)
+    {
+        var name = paramName.TrimStart('@');
+        _scopedParams.Add(name);
+        _parameters[$"@p{_scopeIndex:D3}_{name}"] = value;
+        return this;
     }
 
     // -------------------------------------------------------------------------
@@ -248,7 +246,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     public IQueryBuilder WithCte(string name, Action<IQueryBuilder> cte, string fields = "",
         string description = "", bool first = false, bool terminate = false)
     {
-        _insideCte = true;
 
         if (!description.IsEmpty())
             AppendRaw($"--{description}");
@@ -266,7 +263,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         cte.Invoke(this);
         RemoveIndent();
         UpdateSql(terminate ? ")" : "),", false, true);
-        _insideCte = false;
         return this;
     }
 
@@ -298,7 +294,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     public void Clear()
     {
         _indents = 0;
-        _insideCte = false;
         _fullSql.Clear();
         _parameters = new ExpandoObject();
         _scopedParams.Clear();
