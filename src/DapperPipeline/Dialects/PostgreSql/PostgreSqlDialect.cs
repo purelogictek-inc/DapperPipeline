@@ -30,6 +30,9 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    public string PipelinePreamble => "";
+
+    /// <inheritdoc />
     public bool ShouldRetry(DbException exception) =>
         exception is NpgsqlException { IsTransient: true };
 

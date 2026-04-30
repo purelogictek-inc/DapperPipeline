@@ -28,6 +28,9 @@ public sealed class SqliteDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    public string PipelinePreamble => "";
+
+    /// <inheritdoc />
     public bool ShouldRetry(DbException exception) =>
         exception is SqliteException { SqliteErrorCode: 5 or 6 }; // BUSY or LOCKED
 

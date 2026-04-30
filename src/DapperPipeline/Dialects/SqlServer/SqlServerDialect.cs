@@ -28,6 +28,9 @@ public sealed class SqlServerDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    public string PipelinePreamble => "SET NOCOUNT ON;\n";
+
+    /// <inheritdoc />
     public bool ShouldRetry(DbException exception) => exception is SqlException { Number: 3960 or 1205 or -2 or 11 };
 
     /// <inheritdoc />

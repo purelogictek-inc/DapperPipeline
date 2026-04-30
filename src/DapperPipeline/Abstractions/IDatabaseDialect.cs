@@ -16,6 +16,13 @@ public interface IDatabaseDialect
     IParameterScanner Scanner { get; }
 
     /// <summary>
+    /// SQL injected at the start of every batched pipeline run, before any command's SQL.
+    /// Use for dialect-specific preamble like SQL Server's <c>SET NOCOUNT ON</c>; return an
+    /// empty string when no preamble is needed (SQLite, PostgreSQL).
+    /// </summary>
+    string PipelinePreamble { get; }
+
+    /// <summary>
     /// Returns <c>true</c> if the pipeline should retry the transaction after
     /// <paramref name="exception"/> (e.g. deadlock, optimistic lock conflict, transient timeout).
     /// </summary>

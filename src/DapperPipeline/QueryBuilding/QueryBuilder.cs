@@ -124,9 +124,8 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         var fullName = name.StartsWith('@') ? name : $"@{name}";
 
         // Lazy materialization — only add to _parameters on first reference
-        if (!_parameters.ContainsKey(fullName))
+        if (_parameters.TryAdd(fullName, value))
         {
-            _parameters[fullName] = value;
             if (value is not null) _valueIndex[value] = fullName;
         }
         else if (value is not null && _parameters.TryGetValue(fullName, out var existing) && !Equals(existing, value))
@@ -149,8 +148,7 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         public new bool Equals(object? x, object? y)
         {
             if (x is null || y is null) return ReferenceEquals(x, y);
-            if (x.GetType() != y.GetType()) return false;
-            return x.Equals(y);
+            return x.GetType() == y.GetType() && x.Equals(y);
         }
 
         public int GetHashCode(object obj) => obj?.GetHashCode() ?? 0;
@@ -243,8 +241,13 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
     // IQueryBuilder — CTE
     // -------------------------------------------------------------------------
 
-    public IQueryBuilder WithCte(string name, Action<IQueryBuilder> cte, string fields = "",
-        string description = "", bool first = false, bool terminate = false)
+    public IQueryBuilder WithCte(
+        string name,
+        Action<IQueryBuilder> cte,
+        string fields = "",
+        string description = "",
+        bool first = false,
+        bool terminate = false)
     {
 
         if (!description.IsEmpty())

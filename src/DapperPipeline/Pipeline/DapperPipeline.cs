@@ -68,26 +68,6 @@ internal sealed class DapperPipeline(
     public IDapperPipeline Register(IQueryCommand? command)
     {
         if (command == null) return this;
-
-        if (!command.ShouldInclude(out var reason))
-        {
-            logger.LogDebug("Command '{Name}' excluded — {Reason}.",
-                command.Name, reason ?? "ShouldInclude returned false");
-            _skippedCommands.Add(command.Name);
-            return this;
-        }
-
-        if (!queryBuilder.HasQuery)
-            queryBuilder.AppendRaw("SET NOCOUNT ON;\n");
-
-        queryBuilder.BeginCommandScope(_scopeIndex++);
-        command.Build(queryBuilder, _state);
-
-        if (queryBuilder.HasReplaceableStatements)
-            throw new InvalidOperationException(
-                $"Command '{command.Name}' left unreplaced placeholder tokens in the SQL.");
-
-        command.Process(processor);
         _commands.Add((command.Name, command));
         return this;
     }
@@ -126,7 +106,38 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public async Task<IDapperPipeline> RunAsync(CancellationToken token = default)
     {
+        // 1. Pre-validation — fail fast if any IQueryCommand<T> is missing OnResult
         ValidateResultBindings();
+
+        // 2. Inject dialect preamble (e.g. "SET NOCOUNT ON;\n" for SQL Server, "" for SQLite/PostgreSQL)
+        var preamble = dialect.PipelinePreamble;
+        if (!string.IsNullOrEmpty(preamble))
+            queryBuilder.AppendRaw(preamble);
+
+        // 3. For each registered command: pre-check, scope, build, process
+        var includedCommands = new List<(string Name, IQueryCommand Command)>(_commands.Count);
+        foreach (var (name, cmd) in _commands)
+        {
+            if (!cmd.ShouldInclude(out var reason))
+            {
+                logger.LogDebug("Command '{Name}' excluded — {Reason}.",
+                    name, reason ?? "ShouldInclude returned false");
+                _skippedCommands.Add(name);
+                continue;
+            }
+
+            queryBuilder.BeginCommandScope(_scopeIndex++);
+            cmd.Build(queryBuilder, _state);
+
+            if (queryBuilder.HasReplaceableStatements)
+                throw new InvalidOperationException(
+                    $"Command '{name}' left unreplaced placeholder tokens in the SQL.");
+
+            cmd.Process(processor);
+            includedCommands.Add((name, cmd));
+        }
+
+        // 4. Drop unused parameters
         queryBuilder.Optimize();
 
         if (!queryBuilder.HasQuery)
@@ -138,11 +149,12 @@ internal sealed class DapperPipeline(
         if (_context.LogSql && logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("SQL:\n{Sql}", queryBuilder.ToDebug());
 
+        // 5. Run behaviors → execute
         try
         {
             var context = new PipelineContext
             {
-                CommandNames = _commands.Select(c => c.Name).ToList(),
+                CommandNames = includedCommands.Select(c => c.Name).ToList(),
                 SkippedCommandNames = _skippedCommands.AsReadOnly()
             };
             await RunWithBehaviorsAsync(context, token).ConfigureAwait(false);
