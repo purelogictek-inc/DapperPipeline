@@ -483,3 +483,5 @@ $RECYCLE.BIN/
 
 # Internal-only design notes — clean-room separation from Warehouse.Operations
 documents/
+
+.claude/
