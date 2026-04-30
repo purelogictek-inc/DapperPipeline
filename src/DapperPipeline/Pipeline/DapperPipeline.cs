@@ -43,7 +43,21 @@ internal sealed class DapperPipeline(
     public IDapperPipeline SetState<T>(T value) where T : class
     {
         _state.Set(value);
+        StatePopulatorCache.Populate(value, RegisterPipelineBinding);
         return this;
+    }
+
+    /// <inheritdoc/>
+    public IDapperPipeline Bind<T>(string name, T value)
+    {
+        RegisterPipelineBinding(name, value);
+        return this;
+    }
+
+    private void RegisterPipelineBinding(string name, object? value)
+    {
+        _state.RegisterBinding(name, value);
+        queryBuilder.RegisterBinding(name, value);
     }
 
     // -------------------------------------------------------------------------

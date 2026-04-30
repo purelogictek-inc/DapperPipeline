@@ -24,8 +24,18 @@ public interface IDapperPipeline
     /// <summary>Applies per-run context settings (timeout, isolation level, retry count).</summary>
     IDapperPipeline Context(Action<IDapperPipelineContext> setup);
 
-    /// <summary>Registers a typed shared-state value, keyed by <typeparamref name="T"/>.</summary>
+    /// <summary>
+    /// Registers a typed shared-state POCO, keyed by <typeparamref name="T"/>. The POCO is
+    /// retrievable via <c>state.Require&lt;T&gt;()</c>; its scalar properties are also
+    /// auto-bound under names of the form <c>@TypeNamePropertyName</c> for use in SQL.
+    /// </summary>
     IDapperPipeline SetState<T>(T value) where T : class;
+
+    /// <summary>
+    /// Pre-binds an ad-hoc named scalar at pipeline scope. The value is retrievable via
+    /// <c>state.Bound&lt;T&gt;(name)</c> for direct interpolation as <c>@{name}</c>.
+    /// </summary>
+    IDapperPipeline Bind<T>(string name, T value);
 
     // -------------------------------------------------------------------------
     // Registration

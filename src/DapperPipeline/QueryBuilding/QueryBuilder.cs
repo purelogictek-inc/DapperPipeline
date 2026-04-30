@@ -37,12 +37,22 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         _registry.Reset();
     }
 
+    void Pipeline.IQueryBuilderInternal.RegisterBinding(string name, object? value) =>
+        RegisterBinding(name, value);
+
     // Keep internal accessor for tests (InternalsVisibleTo)
     internal void BeginCommandScope(int scopeIndex)
     {
         _scopeIndex = scopeIndex;
         _scopedParams.Clear();
         _registry.Reset();
+    }
+
+    internal void RegisterBinding(string name, object? value)
+    {
+        var fullName = name.StartsWith('@') ? name : $"@{name}";
+        _parameters[fullName] = value;
+        if (value is not null) _valueIndex[value] = fullName;
     }
 
     // -------------------------------------------------------------------------
