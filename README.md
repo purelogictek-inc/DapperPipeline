@@ -2,8 +2,6 @@
 
 SQL orchestration layer for [Dapper](https://github.com/DapperLib/Dapper) — fluent multi-command transactions, **compile-time SQL injection prevention**, auto-parameterization, retry, and multi-result-set mapping.
 
-> **Status:** v1.0 in development — pre-release. APIs may change before first NuGet publish.
-
 ## Overview
 
 DapperPipeline batches multiple SQL commands into a **single round-trip** inside a transaction. Each command builds its own SQL and parameters via interpolated strings, reads its own result sets, and delivers results via callbacks — no shared mutable state, no silent result drops, and no way to accidentally introduce SQL injection.
