@@ -6,4 +6,21 @@
     <LangVersion>latest</LangVersion>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
+
+  <!-- Shared package identity for all packable projects (core + dialect satellites).
+       Inert for non-packable projects (tests, benchmarks). -->
+  <PropertyGroup Label="Packaging">
+    <Version>1.0.0</Version>
+    <Authors>PureLogicTek, Inc.</Authors>
+    <Company>PureLogicTek, Inc.</Company>
+    <Copyright>Copyright (c) 2026 PureLogicTek, Inc.</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/purelogictek-inc/DapperPipeline</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/purelogictek-inc/DapperPipeline</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
 </Project>

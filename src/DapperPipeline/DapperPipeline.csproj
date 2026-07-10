@@ -6,20 +6,9 @@
     <AssemblyName>DapperPipeline</AssemblyName>
     <!-- NuGet -->
     <PackageId>DapperPipeline</PackageId>
-    <Version>1.0.0</Version>
-    <Description>SQL orchestration layer for Dapper — compile-time SQL injection prevention, fluent multi-command transactions, auto-parameterization, retry, and multi-result-set mapping.</Description>
-    <Authors>PureLogicTek, Inc.</Authors>
-    <Copyright>Copyright (c) 2026 PureLogicTek, Inc.</Copyright>
-    <PackageTags>dapper;sql;sqlserver;sqlite;postgresql;pipeline;cqrs;orm</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageProjectUrl>https://github.com/purelogictek-inc/DapperPipeline</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/purelogictek-inc/DapperPipeline</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Description>SQL orchestration layer for Dapper — compile-time SQL injection prevention, fluent multi-command transactions, auto-parameterization, retry, and multi-result-set mapping. Database-agnostic core; add a dialect package (DapperPipeline.SqlServer, DapperPipeline.Sqlite, or DapperPipeline.PostgreSql) for your database.</Description>
+    <PackageTags>dapper;sql;pipeline;cqrs;orm;transaction;sql-injection</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,12 +20,6 @@
     <PackageReference Include="Polly" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-  </ItemGroup>
-
-  <ItemGroup Label="Dialects">
-    <PackageReference Include="Microsoft.Data.SqlClient" />
-    <PackageReference Include="Microsoft.Data.Sqlite" />
-    <PackageReference Include="Npgsql" />
   </ItemGroup>
 
 </Project>

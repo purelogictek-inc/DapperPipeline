@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <RootNamespace>DapperPipeline.Dialects.SqlServer</RootNamespace>
+    <AssemblyName>DapperPipeline.SqlServer</AssemblyName>
+    <!-- NuGet -->
+    <PackageId>DapperPipeline.SqlServer</PackageId>
+    <Description>SQL Server / Azure SQL dialect for DapperPipeline. Provides SqlServerDialect (Microsoft.Data.SqlClient) with T-SQL parameter scanning, DECLARE @Var TABLE support, and retry on deadlock / timeout / optimistic-lock conflicts.</Description>
+    <PackageTags>dapper;sql;sqlserver;azure-sql;pipeline;dialect</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DapperPipeline.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DapperPipeline/DapperPipeline.csproj" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+
+</Project>

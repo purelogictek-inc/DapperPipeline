@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <RootNamespace>DapperPipeline.Dialects.Sqlite</RootNamespace>
+    <AssemblyName>DapperPipeline.Sqlite</AssemblyName>
+    <!-- NuGet -->
+    <PackageId>DapperPipeline.Sqlite</PackageId>
+    <Description>SQLite dialect for DapperPipeline. Provides SqliteDialect (Microsoft.Data.Sqlite) with @Word / $Word / :Word parameter scanning and retry on SQLITE_BUSY / SQLITE_LOCKED.</Description>
+    <PackageTags>dapper;sql;sqlite;pipeline;dialect</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DapperPipeline.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DapperPipeline/DapperPipeline.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+</Project>

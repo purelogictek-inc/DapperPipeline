@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DapperPipeline\DapperPipeline.csproj" />
+    <ProjectReference Include="..\..\src\DapperPipeline.SqlServer\DapperPipeline.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\DapperPipeline.Sqlite\DapperPipeline.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\DapperPipeline.PostgreSql\DapperPipeline.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

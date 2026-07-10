@@ -2,8 +2,6 @@
 
 SQL orchestration layer for [Dapper](https://github.com/DapperLib/Dapper) — fluent multi-command transactions, **compile-time SQL injection prevention**, auto-parameterization, retry, and multi-result-set mapping.
 
-> **Status:** v1.0 in development — pre-release. APIs may change before first NuGet publish.
-
 ## Overview
 
 DapperPipeline batches multiple SQL commands into a **single round-trip** inside a transaction. Each command builds its own SQL and parameters via interpolated strings, reads its own result sets, and delivers results via callbacks — no shared mutable state, no silent result drops, and no way to accidentally introduce SQL injection.
@@ -24,9 +22,24 @@ await pipeline
 
 ## Installation
 
+Install the dialect package for your database — it pulls in the `DapperPipeline` core automatically:
+
 ```
-dotnet add package DapperPipeline
+dotnet add package DapperPipeline.SqlServer     # SQL Server / Azure SQL
+dotnet add package DapperPipeline.Sqlite        # SQLite
+dotnet add package DapperPipeline.PostgreSql    # PostgreSQL
 ```
+
+The core `DapperPipeline` package carries **no database driver**, so you only ever pull in the one
+you use. To support a custom database, reference `DapperPipeline` directly and implement
+`IDatabaseDialect`.
+
+| Package | Depends on |
+|---|---|
+| `DapperPipeline` | Dapper, Polly, MS logging/DI abstractions — no DB driver |
+| `DapperPipeline.SqlServer` | core + `Microsoft.Data.SqlClient` |
+| `DapperPipeline.Sqlite` | core + `Microsoft.Data.Sqlite` |
+| `DapperPipeline.PostgreSql` | core + `Npgsql` |
 
 **Target frameworks:** net8.0, net9.0
 
@@ -518,7 +531,10 @@ SQL Server's built-in dialect retries on deadlock (1205), optimistic lock confli
 | `SqliteDialect` | `@Word`, `$Word`, `:Word` | No table variables — use CTEs |
 | `PostgreSqlDialect` | `@Word` (Npgsql named mode) | No `DECLARE @Var TABLE` — use CTEs |
 
-Implement `IDatabaseDialect` to support any other database. The pipeline core uses `DbConnection` and `DbException` exclusively — no SQL Server coupling.
+Each dialect ships as its own package (`DapperPipeline.SqlServer`, `DapperPipeline.Sqlite`,
+`DapperPipeline.PostgreSql`) so you only pull in the driver you use. To support any other database,
+reference the core `DapperPipeline` package and implement `IDatabaseDialect` — the pipeline core uses
+`DbConnection` and `DbException` exclusively, with no SQL Server coupling.
 
 ## Debugging
 
