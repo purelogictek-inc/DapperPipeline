@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <RootNamespace>DapperPipeline.Dialects.PostgreSql</RootNamespace>
+    <AssemblyName>DapperPipeline.PostgreSql</AssemblyName>
+    <!-- NuGet -->
+    <PackageId>DapperPipeline.PostgreSql</PackageId>
+    <Description>PostgreSQL dialect for DapperPipeline. Provides PostgreSqlDialect (Npgsql) with @Word named-parameter scanning and retry on transient Npgsql errors.</Description>
+    <PackageTags>dapper;sql;postgresql;postgres;npgsql;pipeline;dialect</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DapperPipeline.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DapperPipeline/DapperPipeline.csproj" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+
+</Project>
