@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>DapperPipeline.Dialects.Sqlite</RootNamespace>
     <AssemblyName>DapperPipeline.Sqlite</AssemblyName>
     <!-- NuGet -->
@@ -22,6 +22,9 @@
   <ItemGroup>
     <ProjectReference Include="../DapperPipeline/DapperPipeline.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Force the patched SQLite native lib (SQLitePCLRaw 3.x); Microsoft.Data.Sqlite
+         still pulls the vulnerable 2.1.x bundle (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
   </ItemGroup>
 
 </Project>

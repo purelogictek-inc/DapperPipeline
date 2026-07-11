@@ -42,7 +42,7 @@ implement `IDatabaseDialect`. (The assemblies and namespaces are `DapperPipeline
 | `PureLogicTek.DapperPipeline.Sqlite` | core + `Microsoft.Data.Sqlite` |
 | `PureLogicTek.DapperPipeline.PostgreSql` | core + `Npgsql` |
 
-**Target frameworks:** net8.0, net9.0
+**Target frameworks:** net8.0, net9.0, net10.0
 
 ## Setup
 

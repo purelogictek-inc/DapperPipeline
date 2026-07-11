@@ -10,7 +10,8 @@
   </ItemGroup>
   <ItemGroup Label="Dialects">
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="9.0.17" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageVersion Include="Npgsql" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup Label="Tests">
