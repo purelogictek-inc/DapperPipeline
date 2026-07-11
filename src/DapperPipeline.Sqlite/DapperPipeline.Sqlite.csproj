@@ -5,7 +5,7 @@
     <RootNamespace>DapperPipeline.Dialects.Sqlite</RootNamespace>
     <AssemblyName>DapperPipeline.Sqlite</AssemblyName>
     <!-- NuGet -->
-    <PackageId>DapperPipeline.Sqlite</PackageId>
+    <PackageId>PureLogicTek.DapperPipeline.Sqlite</PackageId>
     <Description>SQLite dialect for DapperPipeline. Provides SqliteDialect (Microsoft.Data.Sqlite) with @Word / $Word / :Word parameter scanning and retry on SQLITE_BUSY / SQLITE_LOCKED.</Description>
     <PackageTags>dapper;sql;sqlite;pipeline;dialect</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

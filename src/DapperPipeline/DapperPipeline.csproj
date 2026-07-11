@@ -5,8 +5,8 @@
     <RootNamespace>DapperPipeline</RootNamespace>
     <AssemblyName>DapperPipeline</AssemblyName>
     <!-- NuGet -->
-    <PackageId>DapperPipeline</PackageId>
-    <Description>SQL orchestration layer for Dapper — compile-time SQL injection prevention, fluent multi-command transactions, auto-parameterization, retry, and multi-result-set mapping. Database-agnostic core; add a dialect package (DapperPipeline.SqlServer, DapperPipeline.Sqlite, or DapperPipeline.PostgreSql) for your database.</Description>
+    <PackageId>PureLogicTek.DapperPipeline</PackageId>
+    <Description>SQL orchestration layer for Dapper — compile-time SQL injection prevention, fluent multi-command transactions, auto-parameterization, retry, and multi-result-set mapping. Database-agnostic core; add a dialect package (PureLogicTek.DapperPipeline.SqlServer, PureLogicTek.DapperPipeline.Sqlite, or PureLogicTek.DapperPipeline.PostgreSql) for your database.</Description>
     <PackageTags>dapper;sql;pipeline;cqrs;orm;transaction;sql-injection</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>

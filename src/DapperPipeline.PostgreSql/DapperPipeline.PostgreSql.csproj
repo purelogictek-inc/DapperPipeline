@@ -5,7 +5,7 @@
     <RootNamespace>DapperPipeline.Dialects.PostgreSql</RootNamespace>
     <AssemblyName>DapperPipeline.PostgreSql</AssemblyName>
     <!-- NuGet -->
-    <PackageId>DapperPipeline.PostgreSql</PackageId>
+    <PackageId>PureLogicTek.DapperPipeline.PostgreSql</PackageId>
     <Description>PostgreSQL dialect for DapperPipeline. Provides PostgreSqlDialect (Npgsql) with @Word named-parameter scanning and retry on transient Npgsql errors.</Description>
     <PackageTags>dapper;sql;postgresql;postgres;npgsql;pipeline;dialect</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

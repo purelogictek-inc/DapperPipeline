@@ -1,9 +1,9 @@
-# DapperPipeline.PostgreSql
+# PureLogicTek.DapperPipeline.PostgreSql
 
-PostgreSQL dialect for [DapperPipeline](https://www.nuget.org/packages/DapperPipeline).
+PostgreSQL dialect for [PureLogicTek.DapperPipeline](https://www.nuget.org/packages/PureLogicTek.DapperPipeline).
 
 ```
-dotnet add package DapperPipeline.PostgreSql
+dotnet add package PureLogicTek.DapperPipeline.PostgreSql
 ```
 
 ```csharp

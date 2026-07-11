@@ -1,9 +1,9 @@
-# DapperPipeline.SqlServer
+# PureLogicTek.DapperPipeline.SqlServer
 
-SQL Server / Azure SQL dialect for [DapperPipeline](https://www.nuget.org/packages/DapperPipeline).
+SQL Server / Azure SQL dialect for [PureLogicTek.DapperPipeline](https://www.nuget.org/packages/PureLogicTek.DapperPipeline).
 
 ```
-dotnet add package DapperPipeline.SqlServer
+dotnet add package PureLogicTek.DapperPipeline.SqlServer
 ```
 
 ```csharp

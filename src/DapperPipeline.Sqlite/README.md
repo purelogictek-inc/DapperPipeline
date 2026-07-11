@@ -1,9 +1,9 @@
-# DapperPipeline.Sqlite
+# PureLogicTek.DapperPipeline.Sqlite
 
-SQLite dialect for [DapperPipeline](https://www.nuget.org/packages/DapperPipeline).
+SQLite dialect for [PureLogicTek.DapperPipeline](https://www.nuget.org/packages/PureLogicTek.DapperPipeline).
 
 ```
-dotnet add package DapperPipeline.Sqlite
+dotnet add package PureLogicTek.DapperPipeline.Sqlite
 ```
 
 ```csharp
