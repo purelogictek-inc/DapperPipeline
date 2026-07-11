@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- pipeline: three stages converging into one round-trip -->
+  <g fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M36 40 H70 Q84 40 84 64" opacity="0.6"/>
+    <path d="M36 64 H84" opacity="0.6"/>
+    <path d="M36 88 H70 Q84 88 84 64" opacity="0.6"/>
+    <!-- main line to output -->
+    <path d="M84 64 H96"/>
+  </g>
+  <!-- stage nodes -->
+  <circle cx="36" cy="40" r="11" fill="#ffffff"/>
+  <circle cx="36" cy="64" r="11" fill="#ffffff"/>
+  <circle cx="36" cy="88" r="11" fill="#ffffff"/>
+  <!-- output node -->
+  <circle cx="100" cy="64" r="15" fill="#ffffff"/>
+  <circle cx="100" cy="64" r="6.5" fill="#7C3AED"/>
+</svg>
