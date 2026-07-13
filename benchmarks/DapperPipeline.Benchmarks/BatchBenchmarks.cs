@@ -110,6 +110,25 @@ public class BatchBenchmarks
         return n;
     }
 
+    /// <summary>
+    /// The true floor, and the honest control. A Dapper user who knows that PostgreSQL already runs a
+    /// batch as one implicit transaction can drop BEGIN/COMMIT too — and gets the same atomicity and
+    /// the same speed. We are not faster than Dapper here; we are faster than Dapper code that opens
+    /// a transaction it does not need, which is what everyone writes, including us until we measured.
+    /// </summary>
+    [Benchmark(Description = "Dapper (hand-batched, no transaction)")]
+    public int Dapper_HandBatched_NoTx()
+    {
+        using var conn = Bench.Open();
+
+        const string sql = """
+            UPDATE bench.counter SET hits = hits + 1 WHERE id = @Id;
+            INSERT INTO bench.entries (source, external_id, is_primary) VALUES (@Note, @Id, true);
+            UPDATE bench.orders SET qty = @Qty WHERE id = @Id;
+            """;
+        return conn.Execute(sql, new { Id = 1, Note = "n", Qty = 9 });
+    }
+
     [Benchmark(Description = "DapperPipeline")]
     public async Task Pipeline_Batched() =>
         await _provider.GetRequiredService<IDapperPipeline>()

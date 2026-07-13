@@ -1,10 +1,79 @@
 # DapperPipeline
 
-SQL orchestration layer for [Dapper](https://github.com/DapperLib/Dapper) — fluent multi-command transactions, **compile-time SQL injection prevention**, auto-parameterization, retry, and multi-result-set mapping.
+SQL orchestration layer for [Dapper](https://github.com/DapperLib/Dapper). **A string cannot reach
+your SQL** — plus fluent multi-command transactions, auto-parameterization, bulk inserts, retry and
+multi-result-set mapping.
 
-## Overview
+## SQL injection, deleted at compile time
 
-DapperPipeline batches multiple SQL commands into a **single round-trip** inside a transaction. Each command builds its own SQL and parameters via interpolated strings, reads its own result sets, and delivers results via callbacks — no shared mutable state, no silent result drops, and no way to accidentally introduce SQL injection.
+`builder.Append($"...")` is not string interpolation. It is a custom
+[`[InterpolatedStringHandler]`](https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/tutorials/interpolated-string-handler)
+whose overloads accept **safe types only**. There is no `AppendFormatted(string)` — so a bare string
+in an interpolation hole has nothing to bind to, and **the code does not build**.
+
+```csharp
+// ✅ Compiles. Auto-parameterized — never concatenated.
+builder.Append($"WHERE Id = {orderId} AND Status = {Sql.Text(status)}");
+//  emits:  WHERE Id = @p001_OrderId AND Status = @p001_Status
+//  bound:  @p001_OrderId = 4711, @p001_Status = "shipped"
+```
+
+<!-- readme-test: expect-error -->
+```csharp
+// ❌ Does not compile. `status` is a bare string in a hole — there is no overload that takes one.
+builder.Append($"WHERE Status = '{status}'");
+//                               ^^^^^^^^
+//        error CS1503: cannot convert from 'string' to 'DapperPipeline.Interpolation.SqlText'
+```
+
+This is not a lint rule, an analyzer, or a runtime check you can forget to enable. It is the type
+system. The unsafe version has no meaning to the compiler, so it cannot ship, cannot be code-reviewed
+past, and cannot be reintroduced by someone in a hurry at 5pm.
+
+> Both blocks above are **compiled by the test suite** on every build — the good one must build, the
+> bad one must fail. If that ever stopped being true, the tests break. See
+> [`ReadmeCompilationTests`](tests/DapperPipeline.Tests/Documentation/ReadmeCompilationTests.cs).
+
+When you genuinely need a runtime string, you say so, in the open:
+
+| Need | Write | Result |
+|---|---|---|
+| A string **value** | `Sql.Text(name)` | bound as a parameter |
+| A table/column **identifier** | `Sql.Identifier(table)` | validated against `[A-Za-z_][A-Za-z0-9_]*`, emitted raw |
+| Genuinely raw SQL | `builder.AppendRaw(sql)` | verbatim — explicit, greppable, reviewable |
+
+[Full rules → ](#compile-time-sql-injection-prevention)
+
+## And it is not slower
+
+Safety usually costs something. Here it costs about **4 μs** — which a single network round-trip
+outweighs twenty-five times over. Every number below is BenchmarkDotNet against a **real PostgreSQL
+over TCP**, and the competitor is not naive Dapper but *hand-optimized* Dapper, because beating code
+its author didn't tune proves nothing.
+
+**One SELECT.** The pipeline is within 6% of raw Dapper:
+
+![Single SELECT benchmark](https://raw.githubusercontent.com/purelogictek-inc/DapperPipeline/main/docs/bench-read.png)
+
+**Three writes.** N commands become one round-trip, so we land on the floor — and comfortably beat
+the three-round-trip version most people actually write:
+
+![Batched writes benchmark](https://raw.githubusercontent.com/purelogictek-inc/DapperPipeline/main/docs/bench-batch.png)
+
+**A thousand-row insert.** `RowSet` binds one parameter per **column**, not per row, so 10,000 rows
+cost the same parameters as 10. Ten times the rows costs `RowSet` 1.24× the time. The same calling
+code renders as `unnest`, `OPENJSON` or `json_each` [per dialect](#rowsets--passing-n-rows-on-any-dialect):
+
+![Bulk insert benchmark](https://raw.githubusercontent.com/purelogictek-inc/DapperPipeline/main/docs/bench-bulk.png)
+
+We are not faster than Dapper — nothing is, it *is* the floor. We are as fast as Dapper written by
+someone who already knew every trick below, which is the only comparison worth making.
+[Full results, including where we lose → ](BENCHMARKS.md)
+
+## The other half: N commands, one round-trip
+
+Each command owns its SQL, its parameters and its own result sets, and delivers results by callback —
+no shared mutable state, no silently-dropped rows:
 
 ```csharp
 Order? order = null;
@@ -19,6 +88,9 @@ await pipeline
     .ResolveAndRegister<ILogOrderViewCommand>(cmd => cmd.OrderId = orderId)
     .RunAsync(token);
 ```
+
+Two commands, one round-trip. Whether that batch is wrapped in a transaction is decided by the
+dialect, because the right answer is a property of the engine — see [Transactions](#transactions).
 
 ## Installation
 
