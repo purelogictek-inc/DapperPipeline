@@ -2,6 +2,7 @@ using DapperPipeline.Abstractions;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
 using DapperPipeline.Pipeline;
+using DapperPipeline.RowSets;
 using DapperPipeline.QueryBuilding;
 
 namespace DapperPipeline.Tests.Pipeline;
@@ -14,7 +15,7 @@ public sealed class BindAndSetStateIntegrationTests
 {
     private static (PipelineState State, QueryBuilder QueryBuilder) NewPair(int scopeIndex = 1)
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner());
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
         qb.BeginCommandScope(scopeIndex);
         return (new PipelineState(), qb);
     }

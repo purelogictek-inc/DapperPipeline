@@ -37,6 +37,18 @@ public ref struct SqlInterpolatedHandler
     public void AppendFormatted<T>(T id) where T : ISqlIdentifier
         => _qb.AppendIdentifier(id.Value);
 
+    /// <summary>
+    /// Table-position: a rowset emits a dialect-rendered derived table and binds its own values.
+    /// </summary>
+    /// <remarks>
+    /// Non-generic on purpose. It cannot be a constrained generic like the identifier overload —
+    /// constraints are not part of a method signature, so two <c>AppendFormatted&lt;T&gt;(T)</c>
+    /// would collide. It is unambiguous anyway: every other generic overload here is constrained to
+    /// <see cref="ISqlIdentifier"/> or <see cref="ISqlBindable"/>, so none of them accept a rowset.
+    /// </remarks>
+    public void AppendFormatted(ISqlRowSet rowSet)
+        => _qb.EmitRowSet(rowSet);
+
     /// <summary>Value-position: typed bindable wrapper, auto-named from caller expression.</summary>
     public void AppendFormatted<T>(T value, [CallerArgumentExpression(nameof(value))] string callerExpr = "")
         where T : ISqlBindable

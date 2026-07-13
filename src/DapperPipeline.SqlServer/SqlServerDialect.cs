@@ -28,6 +28,26 @@ public sealed class SqlServerDialect : IDatabaseDialect
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
 
+    /// <summary>
+    /// How <c>RowSet(...)</c> is rendered. Defaults to <see cref="SqlServerRowSetStrategy.OpenJson"/>,
+    /// which binds one parameter for any number of rows and needs nothing installed in the database.
+    /// </summary>
+    /// <remarks>
+    /// This is a deployment concern, not a command concern — your <c>Build</c> methods are identical
+    /// whichever strategy is in force.
+    /// </remarks>
+    public SqlServerRowSetStrategy RowSetStrategy { get; init; } = SqlServerRowSetStrategy.OpenJson;
+
+    /// <summary>
+    /// The user-defined table type used when <see cref="RowSetStrategy"/> is
+    /// <see cref="SqlServerRowSetStrategy.TableValuedParameter"/> (e.g. <c>dbo.EntryType</c>).
+    /// Its columns must match the rowset's, in order.
+    /// </summary>
+    public string? RowSetTableType { get; init; }
+
+    /// <inheritdoc />
+    public IRowSetRenderer RowSetRenderer => new SqlServerRowSetRenderer(RowSetStrategy, RowSetTableType);
+
     /// <inheritdoc />
     public string PipelinePreamble => "SET NOCOUNT ON;\n";
 

@@ -1,6 +1,7 @@
 using DapperPipeline.Abstractions;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
+using DapperPipeline.RowSets;
 using DapperPipeline.QueryBuilding;
 
 namespace DapperPipeline.Tests.Interpolation;
@@ -9,7 +10,7 @@ public sealed class SqlInterpolatedHandlerTests
 {
     private static QueryBuilder NewBuilder(int scopeIndex = 1)
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner());
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
         qb.BeginCommandScope(scopeIndex);
         return qb;
     }
@@ -167,7 +168,7 @@ public sealed class SqlInterpolatedHandlerTests
     [Fact]
     public void CrossCommandSameValue_FirstBindWins_NameCarriesForward()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner());
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
 
         // Command 1 (scope index 1) binds value 42
         qb.BeginCommandScope(1);
@@ -227,7 +228,7 @@ public sealed class SqlInterpolatedHandlerTests
     [Fact]
     public void NewCommandScope_RegistryResets_AllowsSameName()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner());
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
 
         qb.BeginCommandScope(1);
         qb.BindAndEmit(1L, "dto.LocationId");   // claims @p001_LocationId

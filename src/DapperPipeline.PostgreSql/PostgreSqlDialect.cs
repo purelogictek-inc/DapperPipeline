@@ -30,6 +30,13 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Renders rowsets as <c>unnest(@a, @b)</c> — one array parameter per column, so row count
+    /// never consumes the parameter budget.
+    /// </remarks>
+    public IRowSetRenderer RowSetRenderer => PostgreSqlRowSetRenderer.Instance;
+
+    /// <inheritdoc />
     public string PipelinePreamble => "";
 
     /// <inheritdoc />

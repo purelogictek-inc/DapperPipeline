@@ -61,14 +61,58 @@ public interface IQueryBuilder
     [EditorBrowsable(EditorBrowsableState.Never)]
     void BindShared(object? value, string name);
 
+    /// <summary>
+    /// Renders a rowset through the dialect and appends the resulting table expression,
+    /// binding the rowset's values as parameters.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    void EmitRowSet(ISqlRowSet rowSet);
+
     // -------------------------------------------------------------------------
-    // Table-valued parameters
+    // Rowsets — the dialect-agnostic way to pass N rows
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Declares N rows of typed columns as a derived table, and returns a marker you interpolate
+    /// into the SQL. Works identically on every dialect — the dialect decides the rendering.
+    /// </summary>
+    /// <param name="alias">The table alias the SQL will use (e.g. <c>entry</c>).</param>
+    /// <param name="rows">The rows. Enumerated once, immediately.</param>
+    /// <param name="map">Declares the columns; each column's SQL type is inferred.</param>
+    /// <remarks>
+    /// <code>
+    /// var entries = builder.RowSet("entry", externalIds, map =>
+    /// {
+    ///     map.Column("source",      x => x.Source);
+    ///     map.Column("external_id", x => x.ExternalId);
+    /// });
+    ///
+    /// builder.Append($"""
+    ///     INSERT INTO team_external_id (team_version_id, source, external_id)
+    ///     SELECT v.id, entry.source, entry.external_id
+    ///     FROM   new_version v, {entries}
+    ///     """);
+    /// </code>
+    /// <para>
+    /// Values are bound, never concatenated. PostgreSQL binds one parameter per <em>column</em>
+    /// (<c>unnest</c>) and SQL Server one in total (<c>OPENJSON</c>), so row count does not consume
+    /// the parameter budget. The portable fallback binds one per cell and caps the row count.
+    /// </para>
+    /// </remarks>
+    ISqlRowSet RowSet<T>(string alias, IEnumerable<T> rows, Action<IRowSetColumnBuilder<T>> map);
+
+    // -------------------------------------------------------------------------
+    // Table-valued parameters (SQL Server)
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Maps a collection of <typeparamref name="T"/> to a SQL table-valued parameter
     /// using the fluent <see cref="IDataTableMapper{T}"/> setup action.
     /// </summary>
+    /// <remarks>
+    /// SQL Server specific — requires a matching user-defined table type in the database. For
+    /// portable code use <see cref="RowSet{T}"/>, which needs no database setup.
+    /// </remarks>
     IQueryBuilder MapTable<T>(string paramName, string tableType, IEnumerable<T> source,
         Action<IDataTableMapper<T>> setup);
 

@@ -1,6 +1,7 @@
 using DapperPipeline.Abstractions;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
+using DapperPipeline.RowSets;
 using DapperPipeline.QueryBuilding;
 using NSubstitute;
 
@@ -16,7 +17,7 @@ public sealed class QueryBuilderTests
         _scanner = Substitute.For<IParameterScanner>();
         _scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>())
             .Returns(ci => (string)ci[0]);
-        _qb = new QueryBuilder(_scanner);
+        _qb = new QueryBuilder(_scanner, ValuesRowSetRenderer.Instance);
         _qb.BeginCommandScope(0);
     }
 
@@ -177,7 +178,7 @@ public sealed class QueryBuilderTests
     [Fact]
     public void ToDebug_includes_declare_and_set_for_int_param()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner());
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
         qb.BeginCommandScope(1);
 
         long orderId = 42L;

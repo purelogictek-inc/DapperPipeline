@@ -102,6 +102,11 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IParameterScanner>(sp =>
             sp.GetRequiredService<IDatabaseDialect>().Scanner);
 
+        // Same for the rowset renderer — it is how the dialect turns RowSet(...) into its own
+        // table expression (unnest / OPENJSON / portable UNION ALL).
+        services.TryAddSingleton<IRowSetRenderer>(sp =>
+            sp.GetRequiredService<IDatabaseDialect>().RowSetRenderer);
+
         services.AddTransient<IQueryBuilderInternal, QueryBuilder>();
         services.AddTransient<IQueryBuilder>(sp => sp.GetRequiredService<IQueryBuilderInternal>());
         services.AddTransient<IDapperResultProcessor, DapperResultProcessor>();

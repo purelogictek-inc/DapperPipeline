@@ -52,4 +52,15 @@ public interface IDatabaseDialect
     /// </para>
     /// </remarks>
     string ExtractErrorCode(DbException exception);
+
+    /// <summary>
+    /// Renders <see cref="ISqlRowSet"/>s as a table expression for this engine.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <c>ValuesRowSetRenderer</c>, a portable <c>SELECT … UNION ALL</c> rendering — so a
+    /// custom dialect gets working rowsets without implementing anything. Override it to bind
+    /// set-based instead of one parameter per cell (PostgreSQL uses <c>unnest</c>, SQL Server
+    /// <c>OPENJSON</c> or a TVP).
+    /// </remarks>
+    IRowSetRenderer RowSetRenderer => DapperPipeline.RowSets.ValuesRowSetRenderer.Instance;
 }

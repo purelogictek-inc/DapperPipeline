@@ -9,7 +9,8 @@ namespace DapperPipeline.QueryBuilding;
 using Abstractions;
 using Utilities;
 
-internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline.IQueryBuilderInternal
+internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRenderer rowSetRenderer)
+    : Pipeline.IQueryBuilderInternal
 {
     private int _indents;
     private StringBuilder _fullSql = new();
@@ -102,9 +103,12 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
             var fullName = $"@p{_scopeIndex:D3}_{sanitized}";
             if (_registry.TryClaim(fullName, callerExpr))
             {
+                // Same expression, different value — the classic "append a row per loop iteration".
+                // Mint the next ordinal instead of throwing; the engine's own parameter cap is the
+                // backstop. (Same expression + same value never gets here: the value index above
+                // already reused the existing parameter.)
                 if (_parameters.TryGetValue(fullName, out var bound) && !Equals(bound, value))
-                    throw new InvalidOperationException(
-                        $"Parameter '{fullName}' bound twice with different values for expression '{callerExpr}'.");
+                    fullName = NextOrdinal(fullName, value, callerExpr);
 
                 _parameters[fullName] = value;
                 if (value is not null) _valueIndex[value] = fullName;
@@ -117,6 +121,29 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner) : Pipeline
         throw new InvalidOperationException(
             $"Cannot generate a unique parameter name for '{callerExpr}'; all candidates collide " +
             $"with already-claimed names in this command's scope. Rename the local variable.");
+    }
+
+    /// <summary>
+    /// Allocates <c>@p000_Foo__2</c>, <c>__3</c>, … when one caller expression binds several
+    /// different values — appending the same interpolated SQL inside a loop, typically.
+    /// </summary>
+    /// <remarks>
+    /// For bulk inserts prefer <c>RowSet</c>: this grows parameters linearly with rows and will
+    /// eventually hit the engine's cap (2100 on SQL Server, 65535 on PostgreSQL), whereas a rowset
+    /// binds per column.
+    /// </remarks>
+    private string NextOrdinal(string baseName, object? value, string callerExpr)
+    {
+        for (var n = 2; ; n++)
+        {
+            var candidate = $"{baseName}__{n}";
+
+            // Never steal a name a different expression already owns.
+            if (!_registry.TryClaim(candidate, callerExpr)) continue;
+
+            if (!_parameters.TryGetValue(candidate, out var bound)) return candidate; // free
+            if (Equals(bound, value)) return candidate;                               // same value
+        }
     }
 
     public void BindShared(object? value, string name)

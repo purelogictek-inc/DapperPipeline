@@ -356,6 +356,22 @@ builder.Append($"""
 
 Any `@Param` token written directly in literal SQL that wasn't introduced via `DECLARE` throws `InvalidOperationException` at build time — pass values through interpolation holes instead.
 
+### Repeating an expression (loops)
+
+Parameter names come from the caller expression, so appending the *same* expression with *different*
+values — a loop — would otherwise collide. It doesn't: each new value gets the next ordinal.
+
+```csharp
+foreach (var id in ids)
+    builder.Append($"INSERT INTO t (id) VALUES ({id});");
+// binds @p001_Id, @p001_Id__2, @p001_Id__3, ...
+```
+
+Repeating the same expression with the **same** value still deduplicates to one parameter.
+
+> For bulk inserts, reach for [`RowSet`](#rowsets--passing-n-rows-on-any-dialect) instead. A loop grows
+> parameters linearly with rows and will eventually hit the engine's cap; a rowset binds per column.
+
 ### Cross-command value deduplication
 
 Identical values used in multiple commands bind once. The first command to use a value claims it; subsequent commands reuse the same parameter name:
@@ -403,7 +419,69 @@ builder.WithCte("ActiveOrders", b => b.Append($"""
 builder.Append($"SELECT * FROM ActiveOrders WHERE BranchId = {branchId}");
 ```
 
-## Table-Valued Parameters
+## Rowsets — passing N rows, on any dialect
+
+To insert or join against many rows, declare a **rowset**. It renders as a derived table you can
+`SELECT` from, and it binds its values — never concatenates them.
+
+```csharp
+var entries = builder.RowSet("entry", externalIds, map => {
+    map.Column("source",      x => x.Source);
+    map.Column("external_id", x => x.ExternalId);
+});
+
+builder.Append($"""
+    INSERT INTO team_external_id (team_version_id, source, external_id)
+    SELECT v.id, entry.source, entry.external_id
+    FROM   new_version v, {entries}
+    """);
+```
+
+**That code is identical on every database.** You refer to `entry.source` / `entry.external_id`
+regardless of dialect; only the rendering behind `{entries}` changes, and the dialect handles it:
+
+| Dialect | `{entries}` becomes | Parameters bound |
+|---|---|---|
+| PostgreSQL | `unnest(@a, @b) AS entry(source, external_id)` | **one per column** |
+| SQL Server | `OPENJSON(@json) WITH (...) AS entry` | **one, total** |
+| Any other dialect | portable `SELECT … UNION ALL` | one per cell |
+
+Column types are inferred from the selectors — you never name a database type.
+
+### The parameter budget
+
+On PostgreSQL and SQL Server the parameter count is **O(columns), not O(rows)** — a 50,000-row
+import binds the same handful of parameters as a 2-row one, so you stay clear of the engine's cap
+(65535 on PostgreSQL, 2100 on SQL Server). The portable fallback binds one parameter per *cell* and
+therefore refuses, loudly, to exceed 2000 cells rather than emitting SQL the engine would reject.
+
+### SQL Server: OPENJSON, TVP, or values
+
+`OPENJSON` is the default because it needs **nothing installed in the database**. If you already have
+table types — or want TVP throughput — opt in at startup; your command code doesn't change:
+
+```csharp
+// Default: OPENJSON. Zero setup, one parameter, SQL Server 2016+.
+services.AddDapperPipeline(new SqlServerDialect(conn));
+
+// Table-valued parameter — requires a user-defined table type matching the rowset's columns.
+services.AddDapperPipeline(new SqlServerDialect(conn) {
+    RowSetStrategy   = SqlServerRowSetStrategy.TableValuedParameter,
+    RowSetTableType  = "dbo.EntryType",
+});
+
+// SQL Server 2012/2014 (no OPENJSON).
+services.AddDapperPipeline(new SqlServerDialect(conn) {
+    RowSetStrategy = SqlServerRowSetStrategy.Values,
+});
+```
+
+> A TVP can't be the *default*: it needs a user-defined table type that already exists and matches the
+> rowset's shape, which can't be inferred for an arbitrary rowset. `OPENJSON` has no such requirement.
+
+## Table-Valued Parameters (SQL Server)
+
+The explicit TVP API remains, for when you want direct control over an existing table type:
 
 ```csharp
 // Fluent column mapping
@@ -416,6 +494,8 @@ builder.MapTable("@Lines", "dbo.OrderLineType", lines, m => {
 // Scalar collection
 builder.AddTableParam("@Ids", orderIds, columnName: "Id");
 ```
+
+These are SQL Server specific. For portable code, prefer `RowSet` above.
 
 ## Conditional Inclusion — `ShouldInclude`
 
