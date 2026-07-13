@@ -19,14 +19,34 @@ internal sealed class DapperPipeline(
     IQueryBuilderInternal queryBuilder,
     IDapperResultProcessor processor,
     IDatabaseDialect dialect,
-    IErrorMapper? errorMapper,
+    IEnumerable<IErrorMapper> errorMappers,
     ILogger<DapperPipeline> logger) : IDapperPipeline
 {
     private readonly DapperPipelineContext _context = new(logger);
+
+    // Composed from every registered IErrorMapper. Null when none are registered —
+    // the documented "no mapper configured" path, which surfaces PipelineException
+    // with the raw error code.
+    private readonly IErrorMapper? _errorMapper = Compose(errorMappers);
     private readonly PipelineState _state = new();
     private readonly List<(string Name, IQueryCommand Command)> _commands = [];
     private readonly List<string> _skippedCommands = [];
     private int _scopeIndex;
+
+    /// <summary>
+    /// Folds every registered <see cref="IErrorMapper"/> into a single mapper.
+    /// Returns null when none are registered, so error mapping is genuinely optional.
+    /// </summary>
+    private static IErrorMapper? Compose(IEnumerable<IErrorMapper> mappers)
+    {
+        var list = mappers.ToList();
+        return list.Count switch
+        {
+            0 => null,
+            1 => list[0],
+            _ => new CompositeErrorMapper(list),
+        };
+    }
 
     // -------------------------------------------------------------------------
     // Configuration
@@ -206,7 +226,7 @@ internal sealed class DapperPipeline(
         catch (DbException dbEx)
         {
             var errorCode = dialect.ExtractErrorCode(dbEx);
-            var mapped = errorMapper?.Map(dbEx, errorCode);
+            var mapped = _errorMapper?.Map(dbEx, errorCode);
             if (mapped != null) throw mapped;
             _context.LogFailure(dbEx);
             throw new PipelineException(dbEx.Message, errorCode, dbEx);

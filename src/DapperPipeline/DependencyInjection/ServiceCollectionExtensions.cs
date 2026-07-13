@@ -4,6 +4,7 @@ using DapperPipeline.Pipeline;
 using DapperPipeline.Processing;
 using DapperPipeline.QueryBuilding;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DapperPipeline.DependencyInjection;
 
@@ -96,6 +97,11 @@ public static class ServiceCollectionExtensions
 
     private static void RegisterCore(IServiceCollection services)
     {
+        // QueryBuilder needs the dialect's scanner. Derive it from the registered dialect —
+        // a scanner that disagrees with its dialect is never what a consumer wants.
+        services.TryAddSingleton<IParameterScanner>(sp =>
+            sp.GetRequiredService<IDatabaseDialect>().Scanner);
+
         services.AddTransient<IQueryBuilderInternal, QueryBuilder>();
         services.AddTransient<IQueryBuilder>(sp => sp.GetRequiredService<IQueryBuilderInternal>());
         services.AddTransient<IDapperResultProcessor, DapperResultProcessor>();

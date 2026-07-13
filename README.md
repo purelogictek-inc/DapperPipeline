@@ -32,8 +32,11 @@ dotnet add package PureLogicTek.DapperPipeline.PostgreSql    # PostgreSQL
 
 The core `PureLogicTek.DapperPipeline` package carries **no database driver**, so you only ever pull
 in the one you use. To support a custom database, reference `PureLogicTek.DapperPipeline` directly and
-implement `IDatabaseDialect`. (The assemblies and namespaces are `DapperPipeline.*` — your code uses
-`using DapperPipeline;` regardless of the package ID.)
+implement `IDatabaseDialect`.
+
+> **Package ID vs. namespaces.** The NuGet IDs are prefixed `PureLogicTek.`, but the assemblies and
+> namespaces are `DapperPipeline.*`. There is no single `using DapperPipeline;` that brings in
+> everything — see [Writing a Command](#writing-a-command) for the usings a command file needs.
 
 | Package | Depends on |
 |---|---|
@@ -80,6 +83,16 @@ services.AddDapperPipelineCommands(assemblyA, assemblyB);
 ## Writing a Command
 
 Commands implement two methods: `Build` (compose SQL via interpolation) and `Process` (register result readers).
+
+A command file needs these usings — `Append` is an extension method in `DapperPipeline.Interpolation`,
+so **omitting that one makes `builder.Append($"...")` fail to compile** (the compiler will suggest an
+unrelated LINQ `Append` overload):
+
+```csharp
+using DapperPipeline.Interpolation;   // Append, AppendRaw, Sql.Identifier
+using DapperPipeline.Abstractions;    // IQueryBuilder, IPipelineState, ISqlBindable, ISqlIdentifier
+using DapperPipeline.Commands;        // BaseQueryCommand, BaseQueryCommand<T>
+```
 
 ```csharp
 public sealed class GetOrderCommand : BaseQueryCommand<Order?>, IGetOrderCommand
@@ -493,9 +506,18 @@ services.AddSingleton<IErrorMapper>(new ErrorRange(
     (ex, offset) => new MyAppException(offset, ex.Message)));
 ```
 
-`ErrorRange` maps any error code in `[rangeStart, rangeEnd)` to a consumer exception. The second argument to the factory is `errorCode - rangeStart` (the offset within the range, useful for encoding HTTP status codes). Chain multiple mappers with `CompositeErrorMapper`.
+`ErrorRange` maps any error code in `[rangeStart, rangeEnd)` to a consumer exception. The second argument to the factory is `errorCode - rangeStart` (the offset within the range, useful for encoding HTTP status codes).
 
-If no mapper handles the error, a `PipelineException` is thrown with the raw error code.
+Register as many `IErrorMapper`s as you like — they **compose automatically**, and the first non-null
+result wins:
+
+```csharp
+services.AddSingleton<IErrorMapper>(new ErrorRange(50000, 51000, ...));
+services.AddSingleton<IErrorMapper>(new ErrorRange(60000, 61000, ...));
+```
+
+Error mappers are **optional**. If none are registered — or none handle the error — a
+`PipelineException` is thrown with the raw error code.
 
 ### Command-level error strings
 
