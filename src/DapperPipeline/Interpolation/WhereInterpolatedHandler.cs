@@ -123,6 +123,24 @@ public ref struct WhereInterpolatedHandler
     private void Bind(object? value, string callerExpr)
         => _clause.Append(_where.BindClauseValue(value, callerExpr));
 
-    // No AppendFormatted(string) and no AppendFormatted(object) — a raw string or an unboxed value
-    // in a clause hole is a compile error, which is the whole point.
+    // A raw string or an unboxed value in a clause hole is a compile error — the whole point. These
+    // two overloads exist only to be picked by overload resolution and then rejected, so the error
+    // is ours rather than the compiler's guess. [Obsolete(error: true)] is a hard error (CS0619) and
+    // cannot be silenced with #pragma warning disable, so nothing is weakened. See the longer note in
+    // SqlInterpolatedHandler.
+
+    /// <summary>Never call this. It exists so a bare string fails to compile with a useful message.</summary>
+    [Obsolete(
+        "A bare string cannot go in a WHERE interpolation hole — it is ambiguous, and guessing wrong " +
+        "is how injections happen. Say which you mean:  Sql.Text(x) binds it as a VALUE (safe, " +
+        "parameterized).  Sql.Identifier(x) emits it as a column NAME (validated, raw).",
+        error: true)]
+    public void AppendFormatted(string value) => throw new NotSupportedException();
+
+    /// <summary>Never call this. It exists so an untyped value fails to compile with a useful message.</summary>
+    [Obsolete(
+        "An untyped object cannot go in a WHERE interpolation hole. Pass a primitive (int, Guid, " +
+        "DateTime, ...), a typed ISqlBindable wrapper, or Sql.Text(x) for a string value.",
+        error: true)]
+    public void AppendFormatted(object value) => throw new NotSupportedException();
 }

@@ -115,9 +115,35 @@ public ref struct SqlInterpolatedHandler
     /// <inheritdoc cref="AppendFormatted(int?, string)" />
     public void AppendFormatted(Guid? v,           [CallerArgumentExpression(nameof(v))] string callerExpr = "") => _qb.BindAndEmit(v, callerExpr);
 
-    // DELIBERATELY OMITTED:
-    //   public void AppendFormatted(string s)      ← compile error for raw string in value position
-    //   public void AppendFormatted(object o)      ← compile error for unboxed values
-    // To pass a string value, define an ISqlBindable wrapper. To use a raw-string identifier,
-    // wrap with Sql.Identifier(...).
+    // ── The enforcement, and why it looks like this ─────────────────────────────────────────────
+    //
+    // A bare string in a hole has always been a compile error, because no overload above accepts one.
+    // But the error the compiler produced on its own was actively misleading:
+    //
+    //   CS0311: The type 'string' cannot be used as type parameter 'T' ... no implicit reference
+    //           conversion from 'string' to 'ISqlIdentifier'.
+    //
+    // It never mentions Sql.Text — the answer in almost every case — and instead points at
+    // ISqlIdentifier, nudging the reader toward Sql.Identifier(...), which emits their input as RAW
+    // SQL. The rule was right and the advice was dangerous.
+    //
+    // These overloads exist purely to be *chosen* by overload resolution and then rejected, so the
+    // error is ours. [Obsolete(error: true)] is a hard compile error (CS0619), not a warning — it
+    // cannot be silenced with #pragma warning disable, so the guarantee is unchanged. We simply get
+    // to say why.
+
+    /// <summary>Never call this. It exists so a bare string fails to compile with a useful message.</summary>
+    [Obsolete(
+        "A bare string cannot go in a SQL interpolation hole — it is ambiguous, and guessing wrong " +
+        "is how injections happen. Say which you mean:  Sql.Text(x) binds it as a VALUE (safe, " +
+        "parameterized).  Sql.Identifier(x) emits it as a table/column NAME (validated, raw).",
+        error: true)]
+    public void AppendFormatted(string value) => throw new NotSupportedException();
+
+    /// <summary>Never call this. It exists so an untyped value fails to compile with a useful message.</summary>
+    [Obsolete(
+        "An untyped object cannot go in a SQL interpolation hole. Pass a primitive (int, Guid, " +
+        "DateTime, ...), a typed ISqlBindable wrapper, or Sql.Text(x) for a string value.",
+        error: true)]
+    public void AppendFormatted(object value) => throw new NotSupportedException();
 }

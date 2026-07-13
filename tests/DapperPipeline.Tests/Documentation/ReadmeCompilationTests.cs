@@ -84,7 +84,8 @@ public sealed class ReadmeCompilationTests
     }
 
     /// <summary>Compiles a snippet inside the scaffold, shaped to what the snippet actually is.</summary>
-    private static List<Diagnostic> Compile(string snippet)
+    /// <remarks>Internal so <c>InterpolationEnforcementTests</c> can assert on what does NOT compile.</remarks>
+    internal static List<Diagnostic> Compile(string snippet)
     {
         // `using` directives can't sit inside a method body, so hoist any the snippet shows for
         // clarity up to the compilation unit. (Duplicating a scaffold using is harmless.)

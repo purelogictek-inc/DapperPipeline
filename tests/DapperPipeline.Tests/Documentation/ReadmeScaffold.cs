@@ -72,6 +72,9 @@ internal static class ReadmeScaffoldText
         public interface IMyCommand : IQueryCommand { }
 
         public sealed record TableName(string Value) : ISqlIdentifier;
+
+        /// <summary>A typed value object — drops into a hole with no wrapper, and stays compile-safe.</summary>
+        public sealed record CustomerName(string Value) : ISqlBindable;
         public static class Tables { public static readonly TableName Orders = new("Orders"); }
 
         public sealed class MyAppException : Exception { public MyAppException(int offset, string m) : base(m) { } }
