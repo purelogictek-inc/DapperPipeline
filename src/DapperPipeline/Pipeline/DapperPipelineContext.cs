@@ -4,7 +4,8 @@ using Microsoft.Extensions.Logging;
 
 namespace DapperPipeline.Pipeline;
 
-internal sealed class DapperPipelineContext(ILogger logger) : IDapperPipelineContext
+internal sealed class DapperPipelineContext(ILogger logger, IsolationLevel defaultLevel)
+    : IDapperPipelineContext
 {
     private IsolationLevel? _level;
 
@@ -12,9 +13,14 @@ internal sealed class DapperPipelineContext(ILogger logger) : IDapperPipelineCon
     public bool LogSql { get; set; } = true;
     public int RetryCount { get; set; }
 
+    /// <summary>
+    /// The transaction isolation level. Falls back to the <em>dialect's</em> default rather than a
+    /// hardcoded one — Snapshot is SQL Server's, and Microsoft.Data.Sqlite throws when handed it,
+    /// so a core default made the pipeline unrunnable on SQLite.
+    /// </summary>
     public IsolationLevel Level
     {
-        get => _level ?? IsolationLevel.Snapshot;
+        get => _level ?? defaultLevel;
         set
         {
             if (_level == null || value > _level)

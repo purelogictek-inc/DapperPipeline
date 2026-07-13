@@ -10,7 +10,11 @@ public interface IDapperPipelineContext
     /// <summary>SQL command timeout in seconds. <c>null</c> uses the connection default.</summary>
     int? CommandTimeout { set; }
 
-    /// <summary>Transaction isolation level. Defaults to <see cref="IsolationLevel.Snapshot"/>.</summary>
+    /// <summary>
+    /// Transaction isolation level. Defaults to the dialect's
+    /// <c>IDatabaseDialect.DefaultIsolationLevel</c> — Snapshot on SQL Server, Serializable on
+    /// SQLite, ReadCommitted on PostgreSQL — because isolation levels are not portable.
+    /// </summary>
     IsolationLevel Level { set; }
 
     /// <summary>Whether to log the compiled SQL at debug level. Defaults to <c>true</c>.</summary>

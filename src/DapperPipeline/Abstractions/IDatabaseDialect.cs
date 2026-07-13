@@ -54,6 +54,36 @@ public interface IDatabaseDialect
     string ExtractErrorCode(DbException exception);
 
     /// <summary>
+    /// The transaction isolation level a pipeline run uses unless the consumer overrides it with
+    /// <c>Context(ctx =&gt; ctx.Level = ...)</c>. Defaults to
+    /// <see cref="System.Data.IsolationLevel.ReadCommitted"/> — the one level every engine supports.
+    /// </summary>
+    /// <remarks>
+    /// Isolation levels are emphatically not portable: <c>Snapshot</c> is SQL Server's, and
+    /// <c>Microsoft.Data.Sqlite</c> throws outright when handed it. The level therefore belongs to
+    /// the dialect, not to the pipeline core.
+    /// </remarks>
+    System.Data.IsolationLevel DefaultIsolationLevel => System.Data.IsolationLevel.ReadCommitted;
+
+    /// <summary>
+    /// Emitted between the SQL of consecutive commands when a pipeline batches them into one
+    /// round-trip. Defaults to <c>";\n"</c>, which is valid on SQL Server, SQLite and PostgreSQL.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is not optional punctuation. Without it the last token of one command fuses with the
+    /// first token of the next — <c>WHERE id = @p001_Id</c> followed by <c>WITH new_version AS …</c>
+    /// lexes as the single parameter <c>@p001_IdWITH</c>, and the resulting syntax error points at
+    /// the <em>next</em> statement rather than the join.
+    /// </para>
+    /// <para>
+    /// PostgreSQL additionally requires the <c>;</c> — it does not accept statements run together the
+    /// way T-SQL does. A trailing separator after the final statement is harmless on all three.
+    /// </para>
+    /// </remarks>
+    string StatementSeparator => ";\n";
+
+    /// <summary>
     /// Renders <see cref="ISqlRowSet"/>s as a table expression for this engine.
     /// </summary>
     /// <remarks>

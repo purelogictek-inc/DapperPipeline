@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using DapperPipeline.Abstractions;
@@ -27,6 +28,13 @@ public sealed class SqliteDialect : IDatabaseDialect
 
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Serializable — SQLite's actual behaviour, and one of only two levels
+    /// Microsoft.Data.Sqlite accepts (the other being ReadUncommitted).
+    /// </remarks>
+    public IsolationLevel DefaultIsolationLevel => IsolationLevel.Serializable;
 
     /// <summary>
     /// How <c>RowSet(...)</c> is rendered. Defaults to <see cref="SqliteRowSetStrategy.JsonEach"/>,

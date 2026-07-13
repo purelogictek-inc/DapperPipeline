@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using DapperPipeline.Abstractions;
@@ -27,6 +28,10 @@ public sealed class SqlServerDialect : IDatabaseDialect
 
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
+
+    /// <inheritdoc />
+    /// <remarks>Snapshot — SQL Server's own, and what this dialect has always used.</remarks>
+    public IsolationLevel DefaultIsolationLevel => IsolationLevel.Snapshot;
 
     /// <summary>
     /// How <c>RowSet(...)</c> is rendered. Defaults to <see cref="SqlServerRowSetStrategy.OpenJson"/>,

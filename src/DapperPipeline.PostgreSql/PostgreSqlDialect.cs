@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using DapperPipeline.Abstractions;
 using Npgsql;
@@ -28,6 +29,10 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
 
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
+
+    /// <inheritdoc />
+    /// <remarks>ReadCommitted — PostgreSQL's own default. It has no Snapshot level.</remarks>
+    public IsolationLevel DefaultIsolationLevel => IsolationLevel.ReadCommitted;
 
     /// <inheritdoc />
     /// <remarks>

@@ -22,7 +22,7 @@ internal sealed class DapperPipeline(
     IEnumerable<IErrorMapper> errorMappers,
     ILogger<DapperPipeline> logger) : IDapperPipeline
 {
-    private readonly DapperPipelineContext _context = new(logger);
+    private readonly DapperPipelineContext _context = new(logger, dialect.DefaultIsolationLevel);
 
     // Composed from every registered IErrorMapper. Null when none are registered —
     // the documented "no mapper configured" path, which surfaces PipelineException
@@ -145,6 +145,13 @@ internal sealed class DapperPipeline(
                 _skippedCommands.Add(name);
                 continue;
             }
+
+            // Separate this command's SQL from the previous one's. Without it the last token of the
+            // previous command fuses with the first token of this one (@p001_Id + WITH ->
+            // @p001_IdWITH), and the syntax error surfaces against the wrong statement. Postgres also
+            // simply requires the ';' between statements.
+            if (queryBuilder.HasQuery)
+                queryBuilder.AppendRaw(dialect.StatementSeparator);
 
             queryBuilder.BeginCommandScope(_scopeIndex++);
             cmd.Build(queryBuilder, _state);

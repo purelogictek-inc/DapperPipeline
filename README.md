@@ -673,11 +673,15 @@ SQL Server's built-in dialect retries on deadlock (1205), optimistic lock confli
 
 ## Dialects
 
-| Dialect | Parameter style | Notes |
-|---|---|---|
-| `SqlServerDialect` | `@Word` | Full T-SQL support including `DECLARE @Var TABLE` |
-| `SqliteDialect` | `@Word`, `$Word`, `:Word` | No table variables — use CTEs |
-| `PostgreSqlDialect` | `@Word` (Npgsql named mode) | No `DECLARE @Var TABLE` — use CTEs |
+| Dialect | Parameter style | Default isolation | Notes |
+|---|---|---|---|
+| `SqlServerDialect` | `@Word` | `Snapshot` | Full T-SQL support including `DECLARE @Var TABLE` |
+| `SqliteDialect` | `@Word`, `$Word`, `:Word` | `Serializable` | No table variables — use CTEs |
+| `PostgreSqlDialect` | `@Word` (Npgsql named mode) | `ReadCommitted` | No `DECLARE @Var TABLE` — use CTEs |
+
+Isolation levels are **not** portable — `Snapshot` is SQL Server's, and `Microsoft.Data.Sqlite`
+throws outright when handed it — so each dialect declares its own. Override per run with
+`Context(ctx => ctx.Level = ...)`. A custom dialect gets `ReadCommitted`, which every engine accepts.
 
 Each dialect ships as its own package (`PureLogicTek.DapperPipeline.SqlServer`,
 `PureLogicTek.DapperPipeline.Sqlite`, `PureLogicTek.DapperPipeline.PostgreSql`) so you only pull in the
