@@ -10,7 +10,16 @@
   <!-- Shared package identity for all packable projects (core + dialect satellites).
        Inert for non-packable projects (tests, benchmarks). -->
   <PropertyGroup Label="Packaging">
-    <Version>1.7.1</Version>
+    <Version>1.8.0</Version>
+    <PackageReleaseNotes>
+New: ReadGrouped&lt;TParent, TChild, TKey&gt;() for one-to-many joins; WithTransaction() / WithoutTransaction().
+
+BEHAVIOUR CHANGE (PostgreSQL): a run no longer opens an explicit transaction by default. PostgreSQL already executes a batch as one implicit transaction, so BEGIN/COMMIT added two round-trips and no atomicity. Batches remain all-or-nothing; reads are ~45% faster. SQL Server and SQLite are unchanged.
+
+BREAKING (PostgreSQL): setting an isolation level now throws unless you also call WithTransaction(), because a level cannot be applied to a run that opens no transaction. One-line fix; the exception says so.
+
+Full notes: https://github.com/purelogictek-inc/DapperPipeline/blob/main/CHANGELOG.md
+    </PackageReleaseNotes>
     <Authors>PureLogicTek, Inc.</Authors>
     <Company>PureLogicTek, Inc.</Company>
     <Copyright>Copyright (c) 2026 PureLogicTek, Inc.</Copyright>
