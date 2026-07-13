@@ -18,6 +18,12 @@ internal sealed class DapperPipelineContext(ILogger logger, IsolationLevel defau
     /// hardcoded one — Snapshot is SQL Server's, and Microsoft.Data.Sqlite throws when handed it,
     /// so a core default made the pipeline unrunnable on SQLite.
     /// </summary>
+    /// <summary>
+    /// Did the caller actually ask for a level, or are we falling back to the dialect's? A run with
+    /// no transaction cannot honour a requested level, and silently ignoring one is not acceptable.
+    /// </summary>
+    internal bool LevelWasRequested => _level is not null;
+
     public IsolationLevel Level
     {
         get => _level ?? defaultLevel;

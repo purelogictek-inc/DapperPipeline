@@ -40,6 +40,24 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
 
     /// <inheritdoc />
     /// <remarks>
+    /// <para>
+    /// <c>false</c> — and this is not us trading atomicity for speed. PostgreSQL runs every statement
+    /// up to the protocol <c>Sync</c> inside an implicit transaction, and Npgsql sends one <c>Sync</c>
+    /// per batch. A failing statement therefore rolls back the ones before it whether or not we sent
+    /// <c>BEGIN</c>, so an explicit transaction adds two round-trips (~143 μs) and changes nothing.
+    /// </para>
+    /// <para>
+    /// <c>TransactionSemanticsTests.Postgres_batch_without_an_explicit_transaction_is_still_atomic</c>
+    /// proves it against a real server: three INSERTs, the third violating a UNIQUE constraint, and
+    /// the table ends up empty. The equivalent test on SQL Server leaves two rows behind — which is
+    /// why that dialect keeps the default.
+    /// </para>
+    /// <para>Need a transaction anyway — to hold locks, say? <c>pipeline.WithTransaction()</c>.</para>
+    /// </remarks>
+    public bool UseTransactionByDefault => false;
+
+    /// <inheritdoc />
+    /// <remarks>
     /// Renders rowsets as <c>unnest(@a, @b)</c> — one array parameter per column, so row count
     /// never consumes the parameter budget.
     /// </remarks>

@@ -769,33 +769,62 @@ SQL Server's built-in dialect retries on deadlock (1205), optimistic lock confli
 
 ## Transactions
 
-Every run is wrapped in a single transaction. N commands means N statements, one round-trip, one
-transaction — that is the whole point of the pipeline, and it is why a partial failure cannot leave
-half a batch applied.
+Every run batches its commands into one round-trip. Whether that batch is wrapped in an explicit
+transaction is decided **by the dialect**, because the right answer is a property of the engine, not
+of your code:
 
-That guarantee is not free. On a networked database, `BEGIN` and `COMMIT` are **two extra
-round-trips** on top of the query itself. For a single read that is most of the wall-clock cost:
-benchmarked against PostgreSQL, a `SELECT` is ~181 μs on its own and ~334 μs inside a transaction.
+| Dialect | Opens a transaction by default | Why |
+|---|---|---|
+| `SqlServerDialect` | **yes** | T-SQL autocommits each statement. Without a transaction, a failure half-way through a batch leaves the earlier statements applied. |
+| `SqliteDialect` | **yes** | Same — statements autocommit individually. |
+| `PostgreSqlDialect` | **no** | PostgreSQL already runs a batch as one implicit transaction (everything up to the protocol `Sync`, and the driver sends one `Sync` per batch). A failed statement rolls the whole batch back anyway, so `BEGIN`/`COMMIT` would add two round-trips and change nothing. |
 
-When a run does not need atomicity — a read, typically — opt out:
+**You do not give up atomicity on PostgreSQL.** It is still all-or-nothing; we just stop paying for a
+guarantee the engine hands us for free. `TransactionSemanticsTests` proves this against a real server
+— three INSERTs, the last one violating a UNIQUE constraint, table ends up empty — and the mirror-image
+test on SQL Server leaves two rows behind, which is why that dialect keeps its transaction.
+
+The cost being avoided is not small. `BEGIN` and `COMMIT` are two extra network round-trips:
+
+| Trivial `SELECT 1` | No transaction | In a transaction |
+|---|---:|---:|
+| SQL Server | 332 μs | **842 μs** |
+| PostgreSQL | 164 μs | 308 μs |
+
+A read-only transaction is genuinely cheap on the *server* — no extra locks, no log records. That is
+the usual advice, and it is advice about server work, not about the wire.
+
+### Overriding it
+
+The dialect only sets the default. Either direction can be forced per run:
 
 ```csharp
+// Force one on — to hold locks across statements, or to run at a specific isolation level.
+await pipeline
+    .WithTransaction()
+    .Context(ctx => ctx.Level = System.Data.IsolationLevel.Serializable)
+    .ResolveAndRegister<IMyCommand>(cmd => { })
+    .RunAsync(token);
+
+// Force one off — the read fast-path on SQL Server / SQLite. On PostgreSQL this is already the default.
 await pipeline
     .WithoutTransaction()
     .ResolveAndRegister<IGetOrderCommand>(cmd => cmd.OrderId = 42)
     .RunAsync(token);
 ```
 
-That takes the same read from ~334 μs to ~191 μs — **within 5% of raw Dapper**, which is the floor,
-because raw Dapper is not opening a transaction either.
+On SQL Server, `WithoutTransaction()` takes a trivial read from ~842 μs to ~332 μs.
 
-> ⚠️ **Do not combine `WithoutTransaction()` with retries and multiple writes.** Retry replays the
-> whole batch. With no transaction there is nothing to roll back, so a failure part-way through
-> leaves the earlier statements applied — and the replay applies them again.
+> ⚠️ **`WithoutTransaction()` on SQL Server or SQLite gives up atomicity.** Use it for reads. A failure
+> part-way through a multi-statement write leaves the earlier statements applied, with nothing to roll
+> back — and if retries are on, the replay applies them a second time.
 
-For everything else, leave the transaction on. The abstraction itself is not what costs you: with the
-database taken out of the measurement, the query builder, the interpolated-string handling, parameter
-naming and DI resolution together come to **~4 μs** per query. See [BENCHMARKS.md](BENCHMARKS.md).
+An isolation level is a property *of a transaction*, so asking for one on a run that opens none throws
+rather than silently running at the session default.
+
+The abstraction itself is not what costs you: with the database taken out of the measurement, the
+query builder, interpolated-string handling, parameter naming and DI resolution together come to
+**~4 μs** per query. See [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Dialects
 

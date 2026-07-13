@@ -66,6 +66,34 @@ public interface IDatabaseDialect
     System.Data.IsolationLevel DefaultIsolationLevel => System.Data.IsolationLevel.ReadCommitted;
 
     /// <summary>
+    /// Whether a run on this engine needs the pipeline to open an explicit transaction. Defaults to
+    /// <c>true</c>; a dialect returns <c>false</c> only when the engine already makes a batch atomic
+    /// on its own. Callers override per-run with <c>WithTransaction()</c> / <c>WithoutTransaction()</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>BEGIN</c> and <c>COMMIT</c> are two extra network round-trips, and a round-trip dwarfs
+    /// everything the library does in-process. Measured on a trivial <c>SELECT</c>: SQL Server 332 μs
+    /// → 842 μs inside a transaction, PostgreSQL 164 μs → 308 μs. A read-only transaction is cheap on
+    /// the <em>server</em> — no extra locks, no log records — which is the usual advice, and it is
+    /// about server work, not about the wire.
+    /// </para>
+    /// <para>
+    /// So the question is not "is a transaction cheap" but "does this engine need one to keep a batch
+    /// atomic". PostgreSQL treats every statement up to the protocol <c>Sync</c> as one implicit
+    /// transaction, and the driver sends a single <c>Sync</c> per batch — so a failed statement rolls
+    /// the whole batch back with no <c>BEGIN</c> from us, and those two round-trips buy nothing.
+    /// T-SQL has no such thing: each statement autocommits, so the statements before a failure stay.
+    /// </para>
+    /// <para>
+    /// Both claims are pinned by <c>TransactionSemanticsTests</c> against real servers rather than
+    /// taken on faith — if a driver or protocol ever changes this, a test fails instead of someone's
+    /// data going half-written.
+    /// </para>
+    /// </remarks>
+    bool UseTransactionByDefault => true;
+
+    /// <summary>
     /// Emitted between the SQL of consecutive commands when a pipeline batches them into one
     /// round-trip. Defaults to <c>";\n"</c>, which is valid on SQL Server, SQLite and PostgreSQL.
     /// </summary>

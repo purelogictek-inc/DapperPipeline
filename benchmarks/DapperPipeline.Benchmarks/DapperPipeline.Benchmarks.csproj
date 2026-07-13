@@ -19,6 +19,7 @@
     <PackageReference Include="Dapper" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 

@@ -32,7 +32,9 @@ internal sealed class DapperPipeline(
     private readonly List<(string Name, IQueryCommand Command)> _commands = [];
     private readonly List<string> _skippedCommands = [];
     private int _scopeIndex;
-    private bool _useTransaction = true;
+
+    // null = "nobody said" — resolved from the dialect at run time. Explicit beats dialect.
+    private bool? _useTransaction;
 
     /// <summary>
     /// Folds every registered <see cref="IErrorMapper"/> into a single mapper.
@@ -57,6 +59,13 @@ internal sealed class DapperPipeline(
     public IDapperPipeline Context(Action<IDapperPipelineContext>? setup)
     {
         setup?.Invoke(_context);
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IDapperPipeline WithTransaction()
+    {
+        _useTransaction = true;
         return this;
     }
 
@@ -136,6 +145,7 @@ internal sealed class DapperPipeline(
     {
         // 1. Pre-validation — fail fast if any IQueryCommand<T> is missing OnResult
         ValidateResultBindings();
+        ValidateTransactionChoice();
 
         // 2. Inject dialect preamble (e.g. "SET NOCOUNT ON;\n" for SQL Server, "" for SQLite/PostgreSQL)
         var preamble = dialect.PipelinePreamble;
@@ -290,10 +300,32 @@ internal sealed class DapperPipeline(
             .Build();
     }
 
+    /// <summary>
+    /// Does this run open a transaction? Whatever the caller said; failing that, whatever the engine
+    /// needs. The dialect only supplies the <em>default</em> — it never overrides an explicit choice.
+    /// </summary>
+    private bool UseTransaction => _useTransaction ?? dialect.UseTransactionByDefault;
+
+    /// <summary>
+    /// An isolation level is a property <em>of a transaction</em>. Asking for one on a run that opens
+    /// no transaction is a contradiction, and quietly running at the session default instead is the
+    /// kind of silent mismatch that only surfaces as a data bug months later. Say so, loudly.
+    /// </summary>
+    private void ValidateTransactionChoice()
+    {
+        if (UseTransaction || !_context.LevelWasRequested) return;
+
+        throw new InvalidOperationException(
+            $"This run requests IsolationLevel.{_context.Level} but opens no transaction, so the level " +
+            $"cannot be applied. Either call WithTransaction() to get one, or drop the isolation level. " +
+            $"({dialect.GetType().Name} does not open a transaction by default" +
+            (_useTransaction == false ? ", and WithoutTransaction() was called" : "") + ".)");
+    }
+
     private async Task ExecTransactionAsync(DbConnection conn, CancellationToken token)
     {
-        // Opted out: no BEGIN, no COMMIT, no rollback — just the statements. Saves two round-trips.
-        if (!_useTransaction)
+        // No BEGIN, no COMMIT, no rollback — just the statements. Saves two round-trips.
+        if (!UseTransaction)
         {
             await ExecCoreAsync(conn, transaction: null, token).ConfigureAwait(false);
             return;

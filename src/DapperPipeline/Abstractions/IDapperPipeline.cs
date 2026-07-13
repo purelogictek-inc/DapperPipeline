@@ -25,23 +25,31 @@ public interface IDapperPipeline
     IDapperPipeline Context(Action<IDapperPipelineContext> setup);
 
     /// <summary>
-    /// Runs the batch <strong>without</strong> opening a transaction.
+    /// Forces this run to open a transaction, whatever the dialect's default is.
+    /// </summary>
+    /// <remarks>
+    /// Whether a run opens a transaction is decided by the dialect — see
+    /// <see cref="IDatabaseDialect.UseTransactionByDefault"/> — because the answer is a property of
+    /// the engine, not of your code. This overrides that for one run: reach for it when you need a
+    /// transaction the engine would not have opened, typically to hold locks across statements
+    /// (<c>SELECT … FOR UPDATE</c>) or to run at a specific isolation level.
+    /// </remarks>
+    IDapperPipeline WithTransaction();
+
+    /// <summary>
+    /// Forces this run to open <strong>no</strong> transaction, whatever the dialect's default is.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// By default every run is wrapped in a transaction, which on a networked database costs two
-    /// extra round-trips (<c>BEGIN</c> and <c>COMMIT</c>) on top of the query itself. For a single
-    /// read that is most of the wall-clock time: benchmarked against PostgreSQL, a <c>SELECT</c>
-    /// costs ~182 μs on its own and ~341 μs inside a transaction. Opting out gives that back.
+    /// <c>BEGIN</c> and <c>COMMIT</c> are two extra network round-trips, and on a trivial read they
+    /// are most of the wall-clock cost — SQL Server 332 μs → 842 μs, PostgreSQL 164 μs → 308 μs. On
+    /// an engine whose dialect already defaults to no transaction (PostgreSQL), this changes nothing.
+    /// On one that needs it (SQL Server, SQLite), this is the read fast-path.
     /// </para>
     /// <para>
-    /// Only opt out when the run does not need atomicity — typically a read, or a single statement
-    /// the engine already applies atomically on its own.
-    /// </para>
-    /// <para>
-    /// <strong>Do not combine this with retries and multiple writes.</strong> Retry replays the whole
-    /// batch; with no transaction to roll back, a failure part-way through leaves the earlier
-    /// statements applied and the replay applies them a second time.
+    /// <strong>You are giving up atomicity on those engines.</strong> Use it for reads. A failure
+    /// part-way through a multi-statement write leaves the earlier statements applied, with nothing
+    /// to roll back — and if retries are on, the replay applies them a second time.
     /// </para>
     /// </remarks>
     IDapperPipeline WithoutTransaction();

@@ -26,25 +26,43 @@ compile-time injection safety, batching and composition **for free**.
 ## 1. A single trivial SELECT — **the abstraction is ~free; the transaction is not**
 
 Nothing to batch, nothing to bulk-load: one round-trip either way. This started out as the section
-where we lost badly — 1.90× raw Dapper — and it was written up as "if your workload is point lookups
-in a hot loop, use raw Dapper."
+where we lost badly — 1.90× raw Dapper — and was written up as "if your workload is point lookups in
+a hot loop, use raw Dapper."
 
 That conclusion was wrong, and the fix was not to optimize anything.
 
 | Method | Mean | Ratio | Allocated |
 |---|---:|---:|---:|
-| Dapper (direct) | **181.3 μs** | 1.00 | 1.79 KB |
-| Dapper (direct, **in a transaction**) | 334.5 μs | 1.84 | 2.02 KB |
-| DapperPipeline | 333.4 μs | 1.84 | 10.01 KB |
-| **DapperPipeline (`WithoutTransaction()`)** | **191.1 μs** | **1.05** | 9.69 KB |
+| Dapper (direct) | **177.8 μs** | 1.00 | 1.81 KB |
+| Dapper (direct, **in a transaction**) | 331.6 μs | 1.87 | 1.99 KB |
+| **DapperPipeline** (PostgreSQL, default) | **188.7 μs** | **1.06** | 9.69 KB |
+| DapperPipeline (`WithoutTransaction()`) | 189.6 μs | 1.07 | 9.69 KB |
 
-The pipeline wraps every run in a transaction. On a networked database that is **two extra
-round-trips** — `BEGIN` and `COMMIT` — and at ~75 μs a hop it is ~155 μs, which *is* the entire gap.
-Raw Dapper doing the same thing (row 2) costs the same as we do (row 3), to within 1%.
+The pipeline used to wrap every run in a transaction. On a networked database that is **two extra
+round-trips** — `BEGIN` and `COMMIT` — and at ~75 μs a hop it was ~155 μs, which *was* the entire gap.
+Raw Dapper doing the same thing (row 2) cost the same as we did, to within 1%. We were never losing
+to Dapper; we were paying for a transaction Dapper wasn't opening.
 
-So the overhead was never the abstraction. Measured with the database taken out of the picture
-entirely, everything we do per query — the interpolated-string handler, parameter naming, the query
-builder, DI resolution, the result processor — adds up to **~4 μs**:
+On PostgreSQL we now don't open one, **and give up nothing**, because PostgreSQL already runs a batch
+as one implicit transaction (see [Transactions](README.md#transactions)). Rows 3 and 4 are the same
+number: the dialect default is doing the work, not the explicit call.
+
+### What a transaction actually costs, per engine
+
+| Trivial `SELECT 1` | No transaction | In a transaction | Cost |
+|---|---:|---:|---:|
+| **SQL Server** | 331.8 μs | **841.8 μs** | **+510 μs (2.54×)** |
+| **PostgreSQL** | 164.4 μs | 307.9 μs | +143 μs (1.87×) |
+
+The folklore that "a transaction around a read is lightweight" is true of the **server** — no extra
+locks, no log records — and says nothing about **the wire**. `BEGIN` and `COMMIT` are round-trips.
+On SQL Server a transaction more than **doubles** a trivial read, which is why `WithoutTransaction()`
+exists for read paths there.
+
+### And the abstraction itself?
+
+Measured with the database removed entirely, everything we do per query — the interpolated-string
+handler, parameter naming, the query builder, DI resolution, the result processor — is **~4 μs**:
 
 | Isolated (no database) | Time |
 |---|---:|
@@ -54,13 +72,10 @@ builder, DI resolution, the result processor — adds up to **~4 μs**:
 | Resolve the pipeline from DI | 121 ns |
 | Resolve **and** register a command (the reflection path) | 148 ns |
 
-**All of the string handling in the library costs less than 3 μs.** A single network round-trip costs
-75 μs — twenty-five times more. Micro-optimizing the string manipulation would recover under 1% of a
-query and is not worth doing; the numbers above exist mainly to prove that.
-
-`WithoutTransaction()` is the real lever, and it is opt-in on purpose — see the note in the README.
-Use it for reads. Do not use it for multi-statement writes: with no transaction there is nothing to
-roll back, and a retry will replay statements that already applied.
+**All the string handling in the library costs under 3 μs.** One network round-trip costs 75 μs —
+twenty-five times more. Micro-optimizing the sanitizer, the `Replace` calls or the `ExpandoObject`
+would recover under 1% of a query; the table above exists mainly to prove that so nobody spends a
+week on it.
 
 ---
 
