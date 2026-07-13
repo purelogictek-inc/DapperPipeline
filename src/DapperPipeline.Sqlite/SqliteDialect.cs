@@ -28,6 +28,15 @@ public sealed class SqliteDialect : IDatabaseDialect
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
 
+    /// <summary>
+    /// How <c>RowSet(...)</c> is rendered. Defaults to <see cref="SqliteRowSetStrategy.JsonEach"/>,
+    /// which binds one parameter for any number of rows.
+    /// </summary>
+    public SqliteRowSetStrategy RowSetStrategy { get; init; } = SqliteRowSetStrategy.JsonEach;
+
+    /// <inheritdoc />
+    public IRowSetRenderer RowSetRenderer => new SqliteRowSetRenderer(RowSetStrategy);
+
     /// <inheritdoc />
     public string PipelinePreamble => "";
 

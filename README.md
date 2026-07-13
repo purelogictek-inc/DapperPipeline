@@ -65,6 +65,11 @@ services.AddDapperPipeline(new SqliteDialect(connectionString));
 services.AddDapperPipeline(new MyDialect(connectionString));
 ```
 
+Logging is optional. The pipeline logs through `ILogger<T>` if your app provides one (any web host
+does), and falls back to a no-op logger if not — so `AddDapperPipeline` works in a bare
+`ServiceCollection`, a console runner, or a test fixture with no extra setup. Calling
+`services.AddLogging(...)` before *or after* `AddDapperPipeline` works as you'd expect.
+
 Then register your commands. You can register them individually or let the library scan an assembly and register all implementations automatically:
 
 ```csharp
@@ -84,15 +89,16 @@ services.AddDapperPipelineCommands(assemblyA, assemblyB);
 
 Commands implement two methods: `Build` (compose SQL via interpolation) and `Process` (register result readers).
 
-A command file needs these usings — `Append` is an extension method in `DapperPipeline.Interpolation`,
-so **omitting that one makes `builder.Append($"...")` fail to compile** (the compiler will suggest an
-unrelated LINQ `Append` overload):
+A command file needs two usings:
 
 ```csharp
-using DapperPipeline.Interpolation;   // Append, AppendRaw, Sql.Identifier
-using DapperPipeline.Abstractions;    // IQueryBuilder, IPipelineState, ISqlBindable, ISqlIdentifier
-using DapperPipeline.Commands;        // BaseQueryCommand, BaseQueryCommand<T>
+using DapperPipeline.Abstractions;   // IQueryBuilder, IPipelineState, Append, ISqlBindable, ISqlIdentifier
+using DapperPipeline.Commands;       // BaseQueryCommand, BaseQueryCommand<T>
 ```
+
+`Append` lives alongside `IQueryBuilder`, so it's in scope wherever you can name the builder — no
+third using to discover. (Add `using static DapperPipeline.Interpolation.Sql;` only if you need
+`Identifier(...)`.)
 
 ```csharp
 public sealed class GetOrderCommand : BaseQueryCommand<Order?>, IGetOrderCommand
@@ -173,7 +179,7 @@ builder.Append($"WHERE Name = '{userInput}'");
 For SQL identifiers (table names, schemas) determined at runtime as a raw `string`:
 
 ```csharp
-using static DapperPipeline.Sql;
+using static DapperPipeline.Interpolation.Sql;
 
 string tableName = config.GetSection("Tables")["Orders"];
 builder.Append($"INSERT INTO {Identifier(tableName)} VALUES (...)");
@@ -219,6 +225,10 @@ processor.Read<Order, OrderLine>(
     rows => EmitResult(rows.FirstOrDefault()));
 ```
 
+> **`Read` always returns `T1`.** To return a *different* type, use [`Project`](#project--db-types-projected-to-a-domain-type).
+> Otherwise the failure is a type-conversion error that reads like a mapping bug —
+> `cannot convert from 'Order' to 'OrderSummary?'`.
+
 ### `Project` — DB types projected to a domain type
 
 Use when SQL returns a flat record or joined records that must be shaped into a different domain type.
@@ -233,8 +243,11 @@ processor.Project<OrderRecord, Order>(
 processor.Project<OrderRecord, BranchRecord, Order>(
     (r, b) => new Order(r) { Branch = new Branch(b) },
     rows => EmitResult(rows.FirstOrDefault()),
-    splitOn: "BranchId");
+    "BranchId");
 ```
+
+> `splitOn` is a `params string[]`, so pass it **positionally**. C# does not allow a named argument
+> for a `params` parameter in its expanded form — `splitOn: "BranchId"` is a compile error.
 
 Both families support up to **15 joined types**. Overloads for T2–T7 use Dapper's typed `GridReader.Read` overloads; T8–T15 use Dapper's object-array overload with typed casts — transparent to callers.
 
@@ -444,16 +457,20 @@ regardless of dialect; only the rendering behind `{entries}` changes, and the di
 |---|---|---|
 | PostgreSQL | `unnest(@a, @b) AS entry(source, external_id)` | **one per column** |
 | SQL Server | `OPENJSON(@json) WITH (...) AS entry` | **one, total** |
-| Any other dialect | portable `SELECT … UNION ALL` | one per cell |
+| SQLite | `json_each(@json)` | **one, total** |
+| Any custom dialect | portable `SELECT … UNION ALL` | one per cell |
 
 Column types are inferred from the selectors — you never name a database type.
 
 ### The parameter budget
 
-On PostgreSQL and SQL Server the parameter count is **O(columns), not O(rows)** — a 50,000-row
-import binds the same handful of parameters as a 2-row one, so you stay clear of the engine's cap
-(65535 on PostgreSQL, 2100 on SQL Server). The portable fallback binds one parameter per *cell* and
-therefore refuses, loudly, to exceed 2000 cells rather than emitting SQL the engine would reject.
+On all three built-in dialects the parameter count is **O(columns), not O(rows)** — a 50,000-row
+import binds the same handful of parameters as a 2-row one, so you stay clear of every engine's cap
+(65535 on PostgreSQL, 2100 on SQL Server, 32766 on SQLite).
+
+Only the portable fallback — used by a custom dialect that hasn't supplied a renderer — binds one
+parameter per *cell*, and it refuses **loudly** past 2000 cells rather than emitting SQL the engine
+would reject.
 
 ### SQL Server: OPENJSON, TVP, or values
 

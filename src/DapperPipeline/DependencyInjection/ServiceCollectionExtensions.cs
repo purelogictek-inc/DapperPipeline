@@ -5,6 +5,8 @@ using DapperPipeline.Processing;
 using DapperPipeline.QueryBuilding;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DapperPipeline.DependencyInjection;
 
@@ -106,6 +108,18 @@ public static class ServiceCollectionExtensions
         // table expression (unnest / OPENJSON / portable UNION ALL).
         services.TryAddSingleton<IRowSetRenderer>(sp =>
             sp.GetRequiredService<IDatabaseDialect>().RowSetRenderer);
+
+        // The pipeline logs, but logging must not be *mandatory*: a web host registers ILogger<T>,
+        // while a console runner or a test fixture does not — and the failure is another opaque DI
+        // resolution error.
+        //
+        // Registering the CLOSED generic is deliberate: it takes precedence over AddLogging's open
+        // ILogger<>, so this factory always runs, and it hands back a real logger whenever the
+        // consumer has an ILoggerFactory. TryAdd-ing a NullLogger instead would be a trap — it would
+        // win over an AddLogging() call made *after* this one and silently kill their logging.
+        services.TryAddSingleton<ILogger<Pipeline.DapperPipeline>>(sp =>
+            sp.GetService<ILoggerFactory>()?.CreateLogger<Pipeline.DapperPipeline>()
+            ?? NullLogger<Pipeline.DapperPipeline>.Instance);
 
         services.AddTransient<IQueryBuilderInternal, QueryBuilder>();
         services.AddTransient<IQueryBuilder>(sp => sp.GetRequiredService<IQueryBuilderInternal>());

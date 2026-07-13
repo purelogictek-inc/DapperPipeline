@@ -1,3 +1,4 @@
+using DapperPipeline.Abstractions;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
 using DapperPipeline.QueryBuilding;

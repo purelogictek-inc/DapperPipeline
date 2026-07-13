@@ -8,6 +8,7 @@ using DapperPipeline.ErrorHandling;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace DapperPipeline.Tests.DependencyInjection;
@@ -80,6 +81,34 @@ public sealed class ContainerResolutionTests
         public string PipelinePreamble => "";
         public bool ShouldRetry(DbException exception) => false;
         public string ExtractErrorCode(DbException exception) => "";
+    }
+
+    [Fact]
+    public void Pipeline_resolves_without_AddLogging()
+    {
+        // A web host registers ILogger<T>; a console runner or test fixture does not. The pipeline
+        // must still resolve — an opaque DI error for a missing logger is not acceptable (#6).
+        var services = new ServiceCollection();   // deliberately NO AddLogging()
+        services.AddDapperPipeline(new SqliteDialect("Data Source=:memory:"));
+
+        var sp = services.BuildServiceProvider();
+
+        Assert.NotNull(sp.GetRequiredService<IDapperPipeline>());
+    }
+
+    [Fact]
+    public void Consumer_logging_still_wins_when_AddLogging_comes_after()
+    {
+        // The dangerous way to make logging optional is TryAdd-ing a NullLogger: it would win over
+        // an AddLogging() call made later and silently kill the consumer's logs. It must not.
+        var services = new ServiceCollection();
+        services.AddDapperPipeline(new SqliteDialect("Data Source=:memory:"));
+        services.AddLogging();                     // registered AFTER the pipeline
+
+        var sp = services.BuildServiceProvider();
+
+        var logger = sp.GetRequiredService<ILogger<global::DapperPipeline.Pipeline.DapperPipeline>>();
+        Assert.IsNotType<NullLogger<global::DapperPipeline.Pipeline.DapperPipeline>>(logger);
     }
 
     [Fact]

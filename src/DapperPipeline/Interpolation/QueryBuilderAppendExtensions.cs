@@ -1,11 +1,17 @@
 using System.Runtime.CompilerServices;
-using DapperPipeline.Abstractions;
+using DapperPipeline.Interpolation;
 
-namespace DapperPipeline.Interpolation;
+namespace DapperPipeline.Abstractions;
 
 /// <summary>
 /// Extension methods enabling <c>IQueryBuilder.Append($"...")</c> compile-time-safe interpolation.
 /// </summary>
+/// <remarks>
+/// Deliberately in the same namespace as <see cref="IQueryBuilder"/>. An extension method that lives
+/// somewhere else is invisible until you find the extra <c>using</c> — and here the compiler's
+/// "helpful" suggestion is LINQ's unrelated <c>IAsyncEnumerable.Append</c>, which sends you the wrong
+/// way entirely. Anywhere you can name <see cref="IQueryBuilder"/>, you can call <c>Append</c>.
+/// </remarks>
 public static class QueryBuilderAppendExtensions
 {
     /// <summary>
