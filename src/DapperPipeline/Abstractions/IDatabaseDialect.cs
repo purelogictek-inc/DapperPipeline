@@ -29,18 +29,27 @@ public interface IDatabaseDialect
     bool ShouldRetry(DbException exception);
 
     /// <summary>
-    /// Extracts the dialect-specific numeric error code from <paramref name="exception"/>.
+    /// Extracts the dialect-specific error code from <paramref name="exception"/>, as text.
+    /// Returns an empty string when the exception carries no code.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Do not use <c>DbException.ErrorCode</c> — that is an HRESULT, not a SQL error number.
     /// </para>
     /// <para>
-    /// SQL Server: <c>SqlException.Number</c> (e.g. 50001 for a business THROW error).
-    /// SQLite: <c>SqliteException.SqliteErrorCode</c>.
-    /// PostgreSQL: returns 0 — use a custom <c>IErrorMapper</c> that casts to <c>NpgsqlException</c>
-    /// and inspects <c>SqlState</c> instead.
+    /// The code is a <see cref="string"/> because not every engine numbers its errors. PostgreSQL
+    /// uses five-character alphanumeric SQLSTATEs (<c>23505</c>, <c>40P01</c> — note the letter),
+    /// which cannot be represented as an <see cref="int"/>.
+    /// </para>
+    /// <para>
+    /// SQL Server: <c>SqlException.Number</c> as text (e.g. <c>"50001"</c> for a business THROW).
+    /// SQLite: <c>SqliteException.SqliteErrorCode</c> as text.
+    /// PostgreSQL: <c>PostgresException.SqlState</c> (the SQLSTATE).
+    /// </para>
+    /// <para>
+    /// Match numeric codes with <c>ErrorRange</c>; match SQLSTATEs with <c>SqlState</c> or
+    /// <c>SqlStateClass</c>.
     /// </para>
     /// </remarks>
-    int ExtractErrorCode(DbException exception);
+    string ExtractErrorCode(DbException exception);
 }

@@ -16,7 +16,7 @@ public sealed class CompositeErrorMapper : IErrorMapper
     }
 
     /// <inheritdoc />
-    public Exception? Map(DbException exception, int errorCode)
+    public Exception? Map(DbException exception, string errorCode)
     {
         foreach (var mapper in _mappers)
         {

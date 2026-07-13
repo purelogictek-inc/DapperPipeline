@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Globalization;
 using DapperPipeline.Abstractions;
 using Microsoft.Data.SqlClient;
 
@@ -34,5 +35,9 @@ public sealed class SqlServerDialect : IDatabaseDialect
     public bool ShouldRetry(DbException exception) => exception is SqlException { Number: 3960 or 1205 or -2 or 11 };
 
     /// <inheritdoc />
-    public int ExtractErrorCode(DbException exception) => exception is SqlException sqlEx ? sqlEx.Number : 0;
+    /// <remarks>Returns <c>SqlException.Number</c> as text (e.g. <c>"50001"</c>). Match with <c>ErrorRange</c>.</remarks>
+    public string ExtractErrorCode(DbException exception) =>
+        exception is SqlException sqlEx
+            ? sqlEx.Number.ToString(CultureInfo.InvariantCulture)
+            : "";
 }

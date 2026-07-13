@@ -14,7 +14,7 @@ public sealed class ErrorRangeTests
         var mapper = new ErrorRange(50000, 51000, (_, offset) => new InvalidOperationException($"offset={offset}"));
         var ex = FakeException();
 
-        var result = mapper.Map(ex, 50042);
+        var result = mapper.Map(ex, "50042");
 
         Assert.NotNull(result);
         Assert.Equal("offset=42", result.Message);
@@ -24,7 +24,7 @@ public sealed class ErrorRangeTests
     public void Map_CodeBelowRange_ReturnsNull()
     {
         var mapper = new ErrorRange(50000, 51000, (_, _) => new Exception());
-        Assert.Null(mapper.Map(FakeException(), 49999));
+        Assert.Null(mapper.Map(FakeException(), "49999"));
     }
 
     [Fact]
@@ -32,14 +32,14 @@ public sealed class ErrorRangeTests
     {
         // range is exclusive at the top
         var mapper = new ErrorRange(50000, 51000, (_, _) => new Exception());
-        Assert.Null(mapper.Map(FakeException(), 51000));
+        Assert.Null(mapper.Map(FakeException(), "51000"));
     }
 
     [Fact]
     public void Map_CodeAtRangeStart_ReturnsException()
     {
         var mapper = new ErrorRange(50000, 51000, (_, offset) => new InvalidOperationException($"offset={offset}"));
-        var result = mapper.Map(FakeException(), 50000);
+        var result = mapper.Map(FakeException(), "50000");
         Assert.NotNull(result);
         Assert.Equal("offset=0", result.Message);
     }
@@ -51,7 +51,7 @@ public sealed class ErrorRangeTests
         DbException? captured = null;
         var mapper = new ErrorRange(50000, 51000, (ex, _) => { captured = ex; return new Exception(); });
 
-        mapper.Map(original, 50001);
+        mapper.Map(original, "50001");
 
         Assert.Same(original, captured);
     }

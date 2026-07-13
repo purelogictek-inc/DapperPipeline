@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Globalization;
 using DapperPipeline.Abstractions;
 using Microsoft.Data.Sqlite;
 
@@ -35,6 +36,9 @@ public sealed class SqliteDialect : IDatabaseDialect
         exception is SqliteException { SqliteErrorCode: 5 or 6 }; // BUSY or LOCKED
 
     /// <inheritdoc />
-    public int ExtractErrorCode(DbException exception) =>
-        exception is SqliteException sqliteEx ? sqliteEx.SqliteErrorCode : 0;
+    /// <remarks>Returns <c>SqliteException.SqliteErrorCode</c> as text. Match with <c>ErrorRange</c>.</remarks>
+    public string ExtractErrorCode(DbException exception) =>
+        exception is SqliteException sqliteEx
+            ? sqliteEx.SqliteErrorCode.ToString(CultureInfo.InvariantCulture)
+            : "";
 }

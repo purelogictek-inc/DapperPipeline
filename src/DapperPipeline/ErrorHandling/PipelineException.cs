@@ -6,11 +6,14 @@ namespace DapperPipeline.ErrorHandling;
 /// </summary>
 public sealed class PipelineException : Exception
 {
-    /// <summary>The database error code associated with this exception, or 0 if not applicable.</summary>
-    public int ErrorCode { get; }
+    /// <summary>
+    /// The database error code associated with this exception — a number as text on SQL Server /
+    /// SQLite, a SQLSTATE on PostgreSQL. Empty when not applicable.
+    /// </summary>
+    public string ErrorCode { get; }
 
     /// <inheritdoc cref="PipelineException"/>
-    public PipelineException(string message, int errorCode, Exception? inner) : base(message, inner)
+    public PipelineException(string message, string errorCode, Exception? inner) : base(message, inner)
     {
         ErrorCode = errorCode;
     }

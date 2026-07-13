@@ -7,8 +7,8 @@ namespace DapperPipeline.Dialects.PostgreSql;
 /// <summary>
 /// Database dialect for PostgreSQL via Npgsql.
 /// Retry on: transient errors as indicated by <see cref="NpgsqlException.IsTransient"/>.
-/// <c>ExtractErrorCode</c> returns 0 — use a custom <c>IErrorMapper</c> that inspects
-/// <c>PostgresException.SqlState</c> for business error handling.
+/// <c>ExtractErrorCode</c> returns the SQLSTATE (e.g. <c>23505</c>, <c>40P01</c>) — match it with
+/// <c>SqlState</c> (exact) or <c>SqlStateClass</c> (by class).
 /// Note: PostgreSQL has no table variables — use CTEs instead of <c>DECLARE @Var TABLE</c>.
 /// </summary>
 public sealed class PostgreSqlDialect : IDatabaseDialect
@@ -38,9 +38,10 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
 
     /// <inheritdoc />
     /// <remarks>
-    /// PostgreSQL uses SQLSTATE string codes (e.g. "40P01" for deadlock), not integers.
-    /// Returns 0 — implement a custom <c>IErrorMapper</c> casting to <c>PostgresException</c>
-    /// and checking <c>SqlState</c> for business error mapping.
+    /// Returns the SQLSTATE (e.g. <c>"23505"</c> unique_violation, <c>"40P01"</c> deadlock_detected).
+    /// Match it with <c>SqlState</c> for an exact code, or <c>SqlStateClass</c> for a family
+    /// (class <c>"23"</c> = integrity constraint violations).
     /// </remarks>
-    public int ExtractErrorCode(DbException exception) => 0;
+    public string ExtractErrorCode(DbException exception) =>
+        exception is PostgresException pgEx ? pgEx.SqlState : "";
 }

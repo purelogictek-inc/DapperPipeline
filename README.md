@@ -508,6 +508,34 @@ services.AddSingleton<IErrorMapper>(new ErrorRange(
 
 `ErrorRange` maps any error code in `[rangeStart, rangeEnd)` to a consumer exception. The second argument to the factory is `errorCode - rangeStart` (the offset within the range, useful for encoding HTTP status codes).
 
+#### Error codes are strings
+
+`IDatabaseDialect.ExtractErrorCode` returns a **`string`**, because not every engine numbers its
+errors. PostgreSQL reports five-character **SQLSTATE**s — `23505` (unique violation), `40P01`
+(deadlock) — which contain letters and cannot be an `int`.
+
+| Dialect | Error code | Match it with |
+|---|---|---|
+| SQL Server | `SqlException.Number` as text — `"50001"` | `ErrorRange` |
+| SQLite | `SqliteException.SqliteErrorCode` as text — `"5"` | `ErrorRange` |
+| PostgreSQL | `PostgresException.SqlState` — `"23505"`, `"40P01"` | `SqlState`, `SqlStateClass` |
+
+#### PostgreSQL — matching SQLSTATEs
+
+```csharp
+// Exact code
+services.AddSingleton<IErrorMapper>(
+    new SqlState("23505", ex => new DuplicateKeyException(ex.Message)));
+
+// Whole class — SQLSTATE is hierarchical; "23" = integrity_constraint_violation,
+// covering 23505 (unique), 23503 (foreign key) and 23514 (check).
+// The factory receives the FULL state, so one mapper can still tell them apart.
+services.AddSingleton<IErrorMapper>(
+    new SqlStateClass("23", (ex, state) => new ConstraintViolationException(state, ex.Message)));
+```
+
+`ErrorRange` simply declines a non-numeric code, so it can sit alongside SQLSTATE mappers safely.
+
 Register as many `IErrorMapper`s as you like — they **compose automatically**, and the first non-null
 result wins:
 

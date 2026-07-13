@@ -13,6 +13,10 @@ public interface IErrorMapper
     /// if this mapper does not handle it.
     /// </summary>
     /// <param name="exception">The database exception.</param>
-    /// <param name="errorCode">The dialect-specific error code extracted by <c>IDatabaseDialect.ExtractErrorCode</c>.</param>
-    Exception? Map(DbException exception, int errorCode);
+    /// <param name="errorCode">
+    /// The dialect-specific error code extracted by <c>IDatabaseDialect.ExtractErrorCode</c> —
+    /// a number as text on SQL Server / SQLite, a SQLSTATE on PostgreSQL. Empty when the
+    /// exception carries no code.
+    /// </param>
+    Exception? Map(DbException exception, string errorCode);
 }

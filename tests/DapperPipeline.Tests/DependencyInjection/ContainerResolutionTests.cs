@@ -79,7 +79,7 @@ public sealed class ContainerResolutionTests
         public IParameterScanner Scanner { get; } = Substitute.For<IParameterScanner>();
         public string PipelinePreamble => "";
         public bool ShouldRetry(DbException exception) => false;
-        public int ExtractErrorCode(DbException exception) => 0;
+        public string ExtractErrorCode(DbException exception) => "";
     }
 
     [Fact]
@@ -111,6 +111,6 @@ public sealed class ContainerResolutionTests
 
     private sealed class StubMapper : IErrorMapper
     {
-        public Exception? Map(DbException exception, int errorCode) => null;
+        public Exception? Map(DbException exception, string errorCode) => null;
     }
 }

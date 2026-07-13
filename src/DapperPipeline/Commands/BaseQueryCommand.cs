@@ -63,6 +63,6 @@ public abstract class BaseQueryCommand<T> : BaseQueryCommand, IQueryCommand<T>, 
         if (_onError != null)
             _onError(error);
         else
-            throw new PipelineException(error, errorCode: 0, inner: null);
+            throw new PipelineException(error, errorCode: "", inner: null);
     }
 }

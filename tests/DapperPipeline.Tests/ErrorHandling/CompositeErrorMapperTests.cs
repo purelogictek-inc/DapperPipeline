@@ -13,14 +13,14 @@ public sealed class CompositeErrorMapperTests
     {
         var expected = new InvalidOperationException("first");
         var first = Substitute.For<IErrorMapper>();
-        first.Map(Arg.Any<DbException>(), Arg.Any<int>()).Returns(expected);
+        first.Map(Arg.Any<DbException>(), Arg.Any<string>()).Returns(expected);
         var second = Substitute.For<IErrorMapper>();
 
         var composite = new CompositeErrorMapper([first, second]);
-        var result = composite.Map(FakeException(), 50001);
+        var result = composite.Map(FakeException(), "50001");
 
         Assert.Same(expected, result);
-        second.DidNotReceiveWithAnyArgs().Map(null!, 0);
+        second.DidNotReceiveWithAnyArgs().Map(null!, null!);
     }
 
     [Fact]
@@ -28,12 +28,12 @@ public sealed class CompositeErrorMapperTests
     {
         var expected = new InvalidOperationException("second");
         var first = Substitute.For<IErrorMapper>();
-        first.Map(Arg.Any<DbException>(), Arg.Any<int>()).Returns((Exception?)null);
+        first.Map(Arg.Any<DbException>(), Arg.Any<string>()).Returns((Exception?)null);
         var second = Substitute.For<IErrorMapper>();
-        second.Map(Arg.Any<DbException>(), Arg.Any<int>()).Returns(expected);
+        second.Map(Arg.Any<DbException>(), Arg.Any<string>()).Returns(expected);
 
         var composite = new CompositeErrorMapper([first, second]);
-        var result = composite.Map(FakeException(), 50001);
+        var result = composite.Map(FakeException(), "50001");
 
         Assert.Same(expected, result);
     }
@@ -42,16 +42,16 @@ public sealed class CompositeErrorMapperTests
     public void Map_NoMapperHandles_ReturnsNull()
     {
         var first = Substitute.For<IErrorMapper>();
-        first.Map(Arg.Any<DbException>(), Arg.Any<int>()).Returns((Exception?)null);
+        first.Map(Arg.Any<DbException>(), Arg.Any<string>()).Returns((Exception?)null);
 
         var composite = new CompositeErrorMapper([first]);
-        Assert.Null(composite.Map(FakeException(), 99999));
+        Assert.Null(composite.Map(FakeException(), "99999"));
     }
 
     [Fact]
     public void Map_EmptyMappers_ReturnsNull()
     {
         var composite = new CompositeErrorMapper([]);
-        Assert.Null(composite.Map(FakeException(), 50001));
+        Assert.Null(composite.Map(FakeException(), "50001"));
     }
 }
