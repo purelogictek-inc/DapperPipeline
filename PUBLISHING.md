@@ -86,6 +86,32 @@ New packages appear on nuget.org a few minutes later (validation + indexing).
 - **Timing:** first-time IDs can take 5–15 min to index; search can lag 30–60 min. A successful
   `Created` in the push step is the authoritative "it worked" signal.
 
+## Tests
+
+`dotnet test` runs everything. The integration tests need real databases; without them they report
+as **skipped**, never as passed.
+
+```bash
+docker run -d --name dp-postgres -e POSTGRES_PASSWORD=VeryStr0ngP@ssw0rd \
+  -e POSTGRES_DB=dapperpipeline -p 5433:5432 postgres:17
+
+docker run -d --name dp-sqlserver -e ACCEPT_EULA=Y \
+  -e MSSQL_SA_PASSWORD=VeryStr0ngP@ssw0rd -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest
+```
+
+Override the connection strings with `DP_POSTGRES` / `DP_SQLSERVER` if your ports differ. CI runs
+both as service containers and **fails if the integration tests skip** — a skip there would mean the
+containers never came up and the job silently proved nothing.
+
+Two rules these tests exist to enforce:
+
+- **A missing database must skip, not pass.** An early `return` would report green while testing
+  nothing, which is worse than having no test.
+- **Never test against SQL Server's `master`.** It uniquely has `ALLOW_SNAPSHOT_ISOLATION` **ON**,
+  which is what hid the bug where the dialect defaulted to Snapshot isolation and failed on every
+  normal database. The suite creates its own database with default settings.
+
 ## Gotchas & lessons learned
 
 **The `Dapper` prefix is reserved.** `Dapper` is a verified reserved namespace on nuget.org (owned by

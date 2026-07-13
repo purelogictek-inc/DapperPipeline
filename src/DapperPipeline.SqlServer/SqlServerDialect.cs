@@ -29,9 +29,32 @@ public sealed class SqlServerDialect : IDatabaseDialect
     /// <inheritdoc />
     public IParameterScanner Scanner => _scanner;
 
+    /// <summary>
+    /// The transaction isolation level for a pipeline run. Defaults to
+    /// <see cref="System.Data.IsolationLevel.ReadCommitted"/> — SQL Server's own default, and the
+    /// only level guaranteed to work on an unmodified database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <strong>Snapshot is not a safe default</strong>, and used to be one. It requires
+    /// <c>ALTER DATABASE … SET ALLOW_SNAPSHOT_ISOLATION ON</c>, which is <strong>OFF by default</strong>
+    /// on every SQL Server database — so the first <c>RunAsync</c> that read a table failed with
+    /// error 3952 (<em>"Snapshot isolation transaction failed … because snapshot isolation is not
+    /// allowed in this database"</em>) for any consumer who had not turned it on. The assumption was
+    /// inherited from a codebase that happened to have it enabled.
+    /// </para>
+    /// <para>If your database <em>does</em> allow snapshot isolation, opt in explicitly:</para>
+    /// <code>
+    /// services.AddDapperPipeline(new SqlServerDialect(conn)
+    /// {
+    ///     IsolationLevel = IsolationLevel.Snapshot,   // requires ALLOW_SNAPSHOT_ISOLATION ON
+    /// });
+    /// </code>
+    /// </remarks>
+    public IsolationLevel IsolationLevel { get; init; } = IsolationLevel.ReadCommitted;
+
     /// <inheritdoc />
-    /// <remarks>Snapshot — SQL Server's own, and what this dialect has always used.</remarks>
-    public IsolationLevel DefaultIsolationLevel => IsolationLevel.Snapshot;
+    public IsolationLevel DefaultIsolationLevel => IsolationLevel;
 
     /// <inheritdoc />
     /// <remarks>

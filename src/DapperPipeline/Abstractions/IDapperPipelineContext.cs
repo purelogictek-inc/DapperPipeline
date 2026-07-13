@@ -12,8 +12,8 @@ public interface IDapperPipelineContext
 
     /// <summary>
     /// Transaction isolation level. Defaults to the dialect's
-    /// <c>IDatabaseDialect.DefaultIsolationLevel</c> — Snapshot on SQL Server, Serializable on
-    /// SQLite, ReadCommitted on PostgreSQL — because isolation levels are not portable.
+    /// <c>IDatabaseDialect.DefaultIsolationLevel</c> — ReadCommitted on SQL Server and PostgreSQL,
+    /// Serializable on SQLite — because isolation levels are not portable.
     /// </summary>
     IsolationLevel Level { set; }
 

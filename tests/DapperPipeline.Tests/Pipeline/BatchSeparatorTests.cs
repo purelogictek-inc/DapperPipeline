@@ -131,11 +131,18 @@ public sealed class BatchSeparatorTests
     [Fact]
     public void Each_dialect_declares_an_isolation_level_its_own_driver_accepts()
     {
-        // The core used to hardcode Snapshot — SQL Server's level. Microsoft.Data.Sqlite throws
-        // outright when handed it, which made RunAsync unrunnable on SQLite. Found by the
-        // end-to-end test; it was never reported.
-        Assert.Equal(IsolationLevel.Snapshot,
+        // Two separate isolation bugs, both found only by running against a real database:
+        //  1. The core hardcoded Snapshot; Microsoft.Data.Sqlite throws on it outright.
+        //  2. SqlServerDialect then *defaulted* to Snapshot — but ALLOW_SNAPSHOT_ISOLATION is OFF on
+        //     every SQL Server database unless someone turns it on, so the first RunAsync that read
+        //     a table died with error 3952. ReadCommitted is SQL Server's own default and works.
+        Assert.Equal(IsolationLevel.ReadCommitted,
             new SqlServerDialect("Server=.;Database=d;Trusted_Connection=true;").DefaultIsolationLevel);
+
+        // Snapshot stays available, but as an explicit opt-in for a database that allows it.
+        Assert.Equal(IsolationLevel.Snapshot,
+            ((IDatabaseDialect)new SqlServerDialect("Server=.;Database=d;Trusted_Connection=true;")
+                { IsolationLevel = IsolationLevel.Snapshot }).DefaultIsolationLevel);
 
         Assert.Equal(IsolationLevel.Serializable,
             new SqliteDialect("Data Source=:memory:").DefaultIsolationLevel);
