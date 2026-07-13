@@ -11,12 +11,14 @@
   <ItemGroup>
     <ProjectReference Include="../../src/DapperPipeline/DapperPipeline.csproj" />
     <ProjectReference Include="../../src/DapperPipeline.PostgreSql/DapperPipeline.PostgreSql.csproj" />
+    <ProjectReference Include="../../src/DapperPipeline.Sqlite/DapperPipeline.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 

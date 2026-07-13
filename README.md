@@ -767,11 +767,41 @@ await pipeline
 
 SQL Server's built-in dialect retries on deadlock (1205), optimistic lock conflict (3960), timeout (-2), and network error (11). Retries use exponential backoff via Polly 8.
 
+## Transactions
+
+Every run is wrapped in a single transaction. N commands means N statements, one round-trip, one
+transaction — that is the whole point of the pipeline, and it is why a partial failure cannot leave
+half a batch applied.
+
+That guarantee is not free. On a networked database, `BEGIN` and `COMMIT` are **two extra
+round-trips** on top of the query itself. For a single read that is most of the wall-clock cost:
+benchmarked against PostgreSQL, a `SELECT` is ~181 μs on its own and ~334 μs inside a transaction.
+
+When a run does not need atomicity — a read, typically — opt out:
+
+```csharp
+await pipeline
+    .WithoutTransaction()
+    .ResolveAndRegister<IGetOrderCommand>(cmd => cmd.OrderId = 42)
+    .RunAsync(token);
+```
+
+That takes the same read from ~334 μs to ~191 μs — **within 5% of raw Dapper**, which is the floor,
+because raw Dapper is not opening a transaction either.
+
+> ⚠️ **Do not combine `WithoutTransaction()` with retries and multiple writes.** Retry replays the
+> whole batch. With no transaction there is nothing to roll back, so a failure part-way through
+> leaves the earlier statements applied — and the replay applies them again.
+
+For everything else, leave the transaction on. The abstraction itself is not what costs you: with the
+database taken out of the measurement, the query builder, the interpolated-string handling, parameter
+naming and DI resolution together come to **~4 μs** per query. See [BENCHMARKS.md](BENCHMARKS.md).
+
 ## Dialects
 
 | Dialect | Parameter style | Default isolation | Notes |
 |---|---|---|---|
-| `SqlServerDialect` | `@Word` | `Snapshot` | Full T-SQL support including `DECLARE @Var TABLE` |
+| `SqlServerDialect` | `@Word` | `ReadCommitted` | Full T-SQL support including `DECLARE @Var TABLE`. `Snapshot` is opt-in via `new SqlServerDialect(cs) { IsolationLevel = IsolationLevel.Snapshot }` — it fails on any database without `ALLOW_SNAPSHOT_ISOLATION`, which is OFF by default. |
 | `SqliteDialect` | `@Word`, `$Word`, `:Word` | `Serializable` | No table variables — use CTEs |
 | `PostgreSqlDialect` | `@Word` (Npgsql named mode) | `ReadCommitted` | No `DECLARE @Var TABLE` — use CTEs |
 

@@ -15,6 +15,11 @@
     <None Include="../../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DapperPipeline.Tests" />
+    <InternalsVisibleTo Include="DapperPipeline.Benchmarks" />
+  </ItemGroup>
+
   <ItemGroup Label="Core">
     <PackageReference Include="Dapper" />
     <PackageReference Include="Polly" />

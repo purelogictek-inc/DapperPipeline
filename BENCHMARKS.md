@@ -23,19 +23,44 @@ compile-time injection safety, batching and composition **for free**.
 
 ---
 
-## 1. A single trivial SELECT — **we lose**
+## 1. A single trivial SELECT — **the abstraction is ~free; the transaction is not**
 
-Nothing to batch, nothing to bulk-load: one round-trip either way. This measures the pure cost of the
-abstraction — DI resolution, the query builder, caller-expression parameter naming, the result
-processor.
+Nothing to batch, nothing to bulk-load: one round-trip either way. This started out as the section
+where we lost badly — 1.90× raw Dapper — and it was written up as "if your workload is point lookups
+in a hot loop, use raw Dapper."
+
+That conclusion was wrong, and the fix was not to optimize anything.
 
 | Method | Mean | Ratio | Allocated |
 |---|---:|---:|---:|
-| Dapper (direct) | **180.8 μs** | 1.00 | 1.77 KB |
-| DapperPipeline | 342.8 μs | **1.90×** | 9.88 KB (5.6×) |
+| Dapper (direct) | **181.3 μs** | 1.00 | 1.79 KB |
+| Dapper (direct, **in a transaction**) | 334.5 μs | 1.84 | 2.02 KB |
+| DapperPipeline | 333.4 μs | 1.84 | 10.01 KB |
+| **DapperPipeline (`WithoutTransaction()`)** | **191.1 μs** | **1.05** | 9.69 KB |
 
-**~160 μs and ~8 KB of overhead per query.** If your workload is single-row point lookups in a hot
-loop, raw Dapper is the right tool and you should use it.
+The pipeline wraps every run in a transaction. On a networked database that is **two extra
+round-trips** — `BEGIN` and `COMMIT` — and at ~75 μs a hop it is ~155 μs, which *is* the entire gap.
+Raw Dapper doing the same thing (row 2) costs the same as we do (row 3), to within 1%.
+
+So the overhead was never the abstraction. Measured with the database taken out of the picture
+entirely, everything we do per query — the interpolated-string handler, parameter naming, the query
+builder, DI resolution, the result processor — adds up to **~4 μs**:
+
+| Isolated (no database) | Time |
+|---|---:|
+| Sanitize one parameter name | 189 ns |
+| Bind one parameter | 216 ns |
+| **Build an entire 8-parameter command + WHERE** | **2.8 μs** |
+| Resolve the pipeline from DI | 121 ns |
+| Resolve **and** register a command (the reflection path) | 148 ns |
+
+**All of the string handling in the library costs less than 3 μs.** A single network round-trip costs
+75 μs — twenty-five times more. Micro-optimizing the string manipulation would recover under 1% of a
+query and is not worth doing; the numbers above exist mainly to prove that.
+
+`WithoutTransaction()` is the real lever, and it is opt-in on purpose — see the note in the README.
+Use it for reads. Do not use it for multi-statement writes: with no transaction there is nothing to
+roll back, and a retry will replay statements that already applied.
 
 ---
 

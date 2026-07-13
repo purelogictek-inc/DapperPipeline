@@ -32,6 +32,7 @@ internal sealed class DapperPipeline(
     private readonly List<(string Name, IQueryCommand Command)> _commands = [];
     private readonly List<string> _skippedCommands = [];
     private int _scopeIndex;
+    private bool _useTransaction = true;
 
     /// <summary>
     /// Folds every registered <see cref="IErrorMapper"/> into a single mapper.
@@ -56,6 +57,13 @@ internal sealed class DapperPipeline(
     public IDapperPipeline Context(Action<IDapperPipelineContext>? setup)
     {
         setup?.Invoke(_context);
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IDapperPipeline WithoutTransaction()
+    {
+        _useTransaction = false;
         return this;
     }
 
@@ -284,35 +292,17 @@ internal sealed class DapperPipeline(
 
     private async Task ExecTransactionAsync(DbConnection conn, CancellationToken token)
     {
+        // Opted out: no BEGIN, no COMMIT, no rollback — just the statements. Saves two round-trips.
+        if (!_useTransaction)
+        {
+            await ExecCoreAsync(conn, transaction: null, token).ConfigureAwait(false);
+            return;
+        }
+
         await using var tx = await conn.BeginTransactionAsync(_context.Level, token).ConfigureAwait(false);
         try
         {
-            if (processor.NeedsToProcess)
-            {
-                var readers = processor.Readers;
-                var count = readers.Count;
-                var counter = 0;
-
-                await using var gr = await conn.QueryMultipleAsync(
-                    sql: queryBuilder.Sql,
-                    param: queryBuilder.Parameters,
-                    transaction: tx,
-                    commandTimeout: _context.CommandTimeout,
-                    commandType: CommandType.Text).ConfigureAwait(false);
-
-                while (!gr.IsConsumed && counter < count)
-                    readers[counter++](gr);
-            }
-            else
-            {
-                var rows = await conn.ExecuteAsync(
-                    sql: queryBuilder.Sql,
-                    param: queryBuilder.Parameters,
-                    transaction: tx,
-                    commandTimeout: _context.CommandTimeout).ConfigureAwait(false);
-                logger.LogDebug("Execute result: {Rows} rows affected.", rows);
-            }
-
+            await ExecCoreAsync(conn, tx, token).ConfigureAwait(false);
             await tx.CommitAsync(token).ConfigureAwait(false);
         }
         catch
@@ -320,6 +310,42 @@ internal sealed class DapperPipeline(
             try { await tx.RollbackAsync(token).ConfigureAwait(false); }
             catch (Exception rbEx) { logger.LogError(rbEx, "Rollback failed."); }
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Issues the batch. <paramref name="transaction"/> is null when the caller opted out via
+    /// <c>WithoutTransaction()</c> — Dapper treats that as "no transaction", which is exactly what
+    /// a connection does by default.
+    /// </summary>
+    private async Task ExecCoreAsync(DbConnection conn, DbTransaction? transaction, CancellationToken token)
+    {
+        if (processor.NeedsToProcess)
+        {
+            var readers = processor.Readers;
+            var count = readers.Count;
+            var counter = 0;
+
+            await using var gr = await conn.QueryMultipleAsync(new CommandDefinition(
+                commandText: queryBuilder.Sql,
+                parameters: queryBuilder.Parameters,
+                transaction: transaction,
+                commandTimeout: _context.CommandTimeout,
+                commandType: CommandType.Text,
+                cancellationToken: token)).ConfigureAwait(false);
+
+            while (!gr.IsConsumed && counter < count)
+                readers[counter++](gr);
+        }
+        else
+        {
+            var rows = await conn.ExecuteAsync(new CommandDefinition(
+                commandText: queryBuilder.Sql,
+                parameters: queryBuilder.Parameters,
+                transaction: transaction,
+                commandTimeout: _context.CommandTimeout,
+                cancellationToken: token)).ConfigureAwait(false);
+            logger.LogDebug("Execute result: {Rows} rows affected.", rows);
         }
     }
 }

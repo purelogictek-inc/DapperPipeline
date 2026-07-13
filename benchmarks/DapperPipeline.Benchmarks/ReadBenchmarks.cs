@@ -67,11 +67,42 @@ public class ReadBenchmarks
         return conn.QueryFirstOrDefault<Order>(Sql, new { Id = 500 });
     }
 
+    /// <summary>
+    /// The control that explains scenario 1. The pipeline wraps EVERY run in a transaction, so on a
+    /// networked database it pays BEGIN + COMMIT as two extra round-trips that raw Dapper never
+    /// pays. If this competitor lands on top of DapperPipeline, the gap is round-trips — not CPU,
+    /// and not string building (which BuildBenchmarks clocks at under 3 μs).
+    /// </summary>
+    [Benchmark(Description = "Dapper (direct, in a transaction)")]
+    public Order? DapperInTransaction()
+    {
+        using var conn = Bench.Open();
+        using var tx = conn.BeginTransaction();
+        var result = conn.QueryFirstOrDefault<Order>(Sql, new { Id = 500 }, tx);
+        tx.Commit();
+        return result;
+    }
+
     [Benchmark(Description = "DapperPipeline")]
     public async Task<Order?> Pipeline()
     {
         Order? result = null;
         await _provider.GetRequiredService<IDapperPipeline>()
+            .ResolveAndRegister<IGetOrderCommand>(c =>
+            {
+                c.OrderId = 500;
+                c.OnResult(o => result = o);
+            })
+            .RunAsync(CancellationToken.None);
+        return result;
+    }
+
+    [Benchmark(Description = "DapperPipeline (WithoutTransaction)")]
+    public async Task<Order?> PipelineNoTx()
+    {
+        Order? result = null;
+        await _provider.GetRequiredService<IDapperPipeline>()
+            .WithoutTransaction()
             .ResolveAndRegister<IGetOrderCommand>(c =>
             {
                 c.OrderId = 500;
