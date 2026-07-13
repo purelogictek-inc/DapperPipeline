@@ -551,16 +551,21 @@ services.AddDapperPipeline(new SqlServerDialect(conn) {
 The explicit TVP API remains, for when you want direct control over an existing table type:
 
 ```csharp
-// Fluent column mapping
+// Fluent column mapping — Map(columnName, selector)
 builder.MapTable("@Lines", "dbo.OrderLineType", lines, m => {
-    m.Add(l => l.ProductId);
-    m.Add(l => l.Qty);
-    m.Add(l => l.Price);
+    m.Map("ProductId", l => l.ProductId);
+    m.Map("Qty",       l => l.Qty);
+    m.Map("Price",     l => l.Price);
 });
 
 // Scalar collection
 builder.AddTableParam("@Ids", orderIds, columnName: "Id");
 ```
+
+The table type is used **verbatim**, so qualify it to target a schema (`sales.OrderLineType`); an
+unqualified name resolves against the connection's default schema.
+
+`IDataTableMapper` also offers `String(col, maxLength, selector)` (truncating) and `Primary(...)`.
 
 These are SQL Server specific. For portable code, prefer `RowSet` above.
 

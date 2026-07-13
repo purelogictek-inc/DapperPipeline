@@ -9,8 +9,13 @@ internal sealed class TableQueryBuilder(string tableType) : IQueryBuilderTableBu
 {
     private readonly DataTable _table = new();
 
+    /// <remarks>
+    /// The type name is used verbatim. It used to be prefixed with <c>dbo.</c>, which made any other
+    /// schema unreachable and turned an already-qualified name into <c>dbo.dbo.OrderLineType</c>.
+    /// An unqualified name resolves against the connection's default schema, as SQL Server intends.
+    /// </remarks>
     public SqlMapper.ICustomQueryParameter ToTableParam() =>
-        _table.AsTableValuedParameter($"dbo.{tableType}");
+        _table.AsTableValuedParameter(tableType);
 
     public IQueryBuilderTableBuilder Fill<T>(string columnName, IEnumerable<T> cells)
     {

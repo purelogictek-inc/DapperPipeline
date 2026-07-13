@@ -220,10 +220,16 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
     public IQueryBuilder MapTable<T>(string paramName, string tableType, IEnumerable<T> source,
         Action<IDataTableMapper<T>> setup)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableType);
+
         var mapper = new ClassToDataTableMapper<T>();
         setup(mapper);
         var table = mapper.Fill(source);
-        return RegisterTableParam(paramName, table.AsTableValuedParameter($"dbo.{tableType}"));
+
+        // Verbatim. Prefixing "dbo." made every other schema unreachable, and turned the
+        // already-qualified name the README itself documents into "dbo.dbo.OrderLineType".
+        // An unqualified name resolves against the connection's default schema.
+        return RegisterTableParam(paramName, table.AsTableValuedParameter(tableType));
     }
 
     public IQueryBuilder AddTableParam(string paramName, DataTable table)

@@ -109,6 +109,14 @@ public interface IQueryBuilder
     /// Maps a collection of <typeparamref name="T"/> to a SQL table-valued parameter
     /// using the fluent <see cref="IDataTableMapper{T}"/> setup action.
     /// </summary>
+    /// <param name="paramName">The parameter name, e.g. <c>@Lines</c>.</param>
+    /// <param name="tableType">
+    /// The user-defined table type, <strong>used verbatim</strong>. Qualify it to target a schema
+    /// (<c>sales.OrderLineType</c>); an unqualified name resolves against the connection's default
+    /// schema.
+    /// </param>
+    /// <param name="source">The rows.</param>
+    /// <param name="setup">Declares the columns.</param>
     /// <remarks>
     /// SQL Server specific — requires a matching user-defined table type in the database. For
     /// portable code use <see cref="RowSet{T}"/>, which needs no database setup.
