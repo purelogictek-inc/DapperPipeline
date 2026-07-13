@@ -122,9 +122,11 @@ public sealed class GetOrderCommand : BaseQueryCommand<Order?>, IGetOrderCommand
 
     public override void Process(IDapperResultProcessor processor)
     {
-        processor.Read<Order, OrderLine>(
-            (order, line) => { order.Lines.Add(line); return order; },
-            rows => EmitResult(rows.FirstOrDefault()));
+        processor.ReadGrouped<Order, OrderLine, long>(
+            o => o.Id,                          // identifies the parent
+            (o, line) => o.Lines.Add(line),     // folds each line into it
+            rows => EmitResult(rows.FirstOrDefault()),
+            "ProductId");                       // splitOn — where OrderLine begins
     }
 }
 ```
@@ -225,10 +227,31 @@ Use when Dapper maps rows directly to the type you want, or when joining multipl
 processor.Read<Order>(rows => EmitResult(rows.FirstOrDefault()));
 
 // Two joined types — T1 (Order) is returned; T2 (OrderLine) is folded in
+processor.ReadGrouped<Order, OrderLine, long>(
+    o => o.Id,
+    (o, line) => o.Lines.Add(line),
+    rows => EmitResult(rows.FirstOrDefault()),
+    "ProductId");
+```
+
+#### ⚠️ Use `ReadGrouped` whenever a parent has many children
+
+Dapper's multi-map calls the mapping function **once per row**, and builds a **fresh parent every
+time**. So the obvious-looking fold:
+
+<!-- readme-test: skip -->
+```csharp
+// WRONG — do not copy this.
 processor.Read<Order, OrderLine>(
     (order, line) => { order.Lines.Add(line); return order; },
     rows => EmitResult(rows.FirstOrDefault()));
 ```
+
+...adds each line to a *different* order, giving you N orders that hold **one** line each — and
+`FirstOrDefault()` hands back whichever came first. A five-line order silently arrives with one line.
+It compiles, it doesn't throw, and the data is simply wrong.
+
+`ReadGrouped` keeps the first parent per key and folds every child into that one.
 
 > **`Read` always returns `T1`.** To return a *different* type, use [`Project`](#project--db-types-projected-to-a-domain-type).
 > Otherwise the failure is a type-conversion error that reads like a mapping bug —

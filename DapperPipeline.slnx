@@ -8,6 +8,9 @@
     <Project Path="src/DapperPipeline.Sqlite/DapperPipeline.Sqlite.csproj" />
     <Project Path="src/DapperPipeline.PostgreSql/DapperPipeline.PostgreSql.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/DapperPipeline.Sample/DapperPipeline.Sample.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DapperPipeline.Tests/DapperPipeline.Tests.csproj" />
   </Folder>

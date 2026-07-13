@@ -48,6 +48,44 @@ public sealed class DapperResultProcessor : IDapperResultProcessor
     }
 
     /// <inheritdoc/>
+    public IDapperResultProcessor ReadGrouped<TParent, TChild, TKey>(
+        Func<TParent, TKey> key,
+        Action<TParent, TChild> addChild,
+        Action<IEnumerable<TParent>> handler,
+        params string[] splitOn)
+        where TKey : notnull
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(addChild);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        // Dapper builds a fresh parent for every row of the join, so folding children into the
+        // parent it just handed us scatters them across N throwaway objects. Keep the first parent
+        // seen for each key and fold everything into that one.
+        var byKey = new Dictionary<TKey, TParent>();
+        var order = new List<TParent>();   // preserve row order; a HashSet would not
+
+        return Read<TParent, TChild>(
+            (parent, child) =>
+            {
+                var k = key(parent);
+                if (!byKey.TryGetValue(k, out var owner))
+                {
+                    byKey[k] = owner = parent;
+                    order.Add(owner);
+                }
+
+                // An outer join with no match yields a null child — nothing to attach.
+                if (child is not null) addChild(owner, child);
+
+                return owner;
+            },
+            // Dapper yields one entry per ROW; the handler wants one per PARENT.
+            _ => handler(order),
+            splitOn);
+    }
+
+    /// <inheritdoc/>
     public IDapperResultProcessor Read<T1, T2, T3>(Func<T1, T2, T3, T1> map, Action<IEnumerable<T1>> handler, params string[] splitOn)
     {
         _scopes.Add(new DapperResultReadScope<T1, T2, T3, T1>(map, handler, splitOn));

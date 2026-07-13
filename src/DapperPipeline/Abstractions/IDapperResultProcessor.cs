@@ -79,6 +79,45 @@ public interface IDapperResultProcessor
     /// </summary>
     IDapperResultProcessor Read<T1, T2>(Func<T1, T2, T1> map, Action<IEnumerable<T1>> handler, params string[] splitOn);
 
+    /// <summary>
+    /// Reads a parent/child join, folding every child into <strong>one</strong> parent per key.
+    /// </summary>
+    /// <param name="key">Identifies a parent — usually its primary key.</param>
+    /// <param name="addChild">Attaches a child to its parent. Not called when the child is null (an outer join with no match).</param>
+    /// <param name="handler">Receives each distinct parent, in the order the rows arrived.</param>
+    /// <param name="splitOn">Where a new type begins in the row. <c>params</c> — pass positionally.</param>
+    /// <remarks>
+    /// <para>
+    /// Use this instead of <c>Read&lt;T1, T2&gt;</c> whenever a parent has many children. Dapper's
+    /// multi-map invokes the mapping function <strong>once per row</strong> and materializes a
+    /// <strong>fresh parent every time</strong>, so the obvious fold —
+    /// </para>
+    /// <code>
+    /// Read&lt;Order, OrderLine&gt;((o, l) => { o.Lines.Add(l); return o; }, rows => Emit(rows.FirstOrDefault()))
+    /// </code>
+    /// <para>
+    /// — produces N <em>different</em> orders each holding ONE line, and then hands you whichever one
+    /// came first. A five-line order silently arrives with one line. It compiles and it does not
+    /// throw; the data is just wrong. This method keeps the first parent per key and folds every
+    /// child into it.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// processor.ReadGrouped&lt;Order, OrderLine, long&gt;(
+    ///     o => o.Id,
+    ///     (o, l) => o.Lines.Add(l),
+    ///     rows => EmitResult(rows.FirstOrDefault()),
+    ///     "order_id");
+    /// </code>
+    /// </example>
+    /// </remarks>
+    IDapperResultProcessor ReadGrouped<TParent, TChild, TKey>(
+        Func<TParent, TKey> key,
+        Action<TParent, TChild> addChild,
+        Action<IEnumerable<TParent>> handler,
+        params string[] splitOn)
+        where TKey : notnull;
+
     /// <inheritdoc cref="Read{T1,T2}"/>
     IDapperResultProcessor Read<T1, T2, T3>(Func<T1, T2, T3, T1> map, Action<IEnumerable<T1>> handler, params string[] splitOn);
 
