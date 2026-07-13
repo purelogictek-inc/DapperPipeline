@@ -149,9 +149,10 @@ internal sealed class DapperPipeline(
             // Separate this command's SQL from the previous one's. Without it the last token of the
             // previous command fuses with the first token of this one (@p001_Id + WITH ->
             // @p001_IdWITH), and the syntax error surfaces against the wrong statement. Postgres also
-            // simply requires the ';' between statements.
+            // simply requires the ';' between statements. Idempotent: a command that already
+            // terminates its own SQL is not given a second ';'.
             if (queryBuilder.HasQuery)
-                queryBuilder.AppendRaw(dialect.StatementSeparator);
+                queryBuilder.EnsureStatementSeparator(dialect.StatementSeparator);
 
             queryBuilder.BeginCommandScope(_scopeIndex++);
             cmd.Build(queryBuilder, _state);

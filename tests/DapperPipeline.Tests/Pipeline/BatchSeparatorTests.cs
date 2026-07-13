@@ -24,11 +24,43 @@ public sealed class BatchSeparatorTests
         var scope = 1;
         foreach (var build in commands)
         {
-            if (qb.HasQuery) qb.AppendRaw(dialect.StatementSeparator);
+            if (qb.HasQuery) qb.EnsureStatementSeparator(dialect.StatementSeparator);
             qb.BeginCommandScope(scope++);
             build(qb);
         }
         return qb.Sql;
+    }
+
+    [Theory]
+    [MemberData(nameof(Dialects))]
+    public void A_command_that_terminates_its_own_sql_is_not_given_a_second_semicolon(IDatabaseDialect dialect)
+    {
+        // Before the separator existed, the documented workaround was to end every command with ';'.
+        // Anyone who did that must not now get ';;' — not every engine accepts an empty statement.
+        var a = 1;
+        var b = 2;
+
+        var sql = BuildBatch(dialect,
+            qb => qb.Append($"SELECT {a};"),     // already terminated by the consumer
+            qb => qb.Append($"SELECT {b}"));
+
+        Assert.DoesNotContain(";;", sql);
+        Assert.Matches(@"SELECT @p001_A\s*;\s*SELECT @p002_B", sql);
+    }
+
+    [Theory]
+    [MemberData(nameof(Dialects))]
+    public void A_self_terminated_command_still_gets_a_break_so_tokens_cannot_fuse(IDatabaseDialect dialect)
+    {
+        var id = 1L;
+
+        var sql = BuildBatch(dialect,
+            qb => qb.Append($"UPDATE t SET x = 0 WHERE id = {id};"),
+            qb => qb.AppendRaw("WITH cte AS (SELECT 1) SELECT * FROM cte"));
+
+        Assert.DoesNotContain(";;", sql);
+        Assert.DoesNotContain("IdWITH", sql);
+        Assert.Contains("WITH cte", sql);
     }
 
     public static TheoryData<IDatabaseDialect> Dialects =>

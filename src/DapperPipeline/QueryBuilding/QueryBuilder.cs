@@ -48,6 +48,38 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
         _registry.Reset();
     }
 
+    public void EnsureStatementSeparator(string separator)
+    {
+        if (_fullSql.Length == 0 || string.IsNullOrEmpty(separator)) return;
+
+        // Last non-whitespace character already written.
+        var end = _fullSql.Length - 1;
+        while (end >= 0 && char.IsWhiteSpace(_fullSql[end])) end--;
+        if (end < 0) return;
+
+        // If the previous command already terminated itself (the pre-fix workaround), don't double
+        // the terminator — just guarantee a break so its last token can't fuse with the next one.
+        var terminator = separator.Trim();
+        if (terminator.Length > 0 && EndsWith(end, terminator))
+        {
+            _fullSql.Append('\n');
+            return;
+        }
+
+        _fullSql.Append(separator);
+    }
+
+    /// <summary>Does the buffer, ignoring trailing whitespace, end with <paramref name="text"/>?</summary>
+    private bool EndsWith(int lastNonWhitespace, string text)
+    {
+        if (lastNonWhitespace + 1 < text.Length) return false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (_fullSql[lastNonWhitespace - text.Length + 1 + i] != text[i]) return false;
+        }
+        return true;
+    }
+
     internal void RegisterBinding(string name, object? value)
     {
         var fullName = name.StartsWith('@') ? name : $"@{name}";
