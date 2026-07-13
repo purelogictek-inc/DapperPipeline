@@ -125,20 +125,16 @@ public interface IQueryBuilder
     IQueryBuilder AddTableParam<T>(string paramName, IEnumerable<T> values, string columnName = "Id");
 
     // -------------------------------------------------------------------------
-    // Conditional SQL
+    // Conditional SQL — see DapperPipeline.SqlServer
     // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Opens a fluent <c>IF / ELSE IF / ELSE</c> decision block.
-    /// All clauses and the optional <c>ELSE</c> are registered inside the <paramref name="builder"/> action.
-    /// </summary>
-    IQueryBuilder If(Action<IQueryBuilderDecisionBuilder> builder);
-
-    /// <summary>Adds a simple <c>IF (<paramref name="clause"/>) BEGIN ... END</c> block.</summary>
-    IQueryBuilder If(string clause, Action<IQueryBuilder> ifBlock, Action<IQueryBuilder>? elseBlock = null);
-
-    /// <summary>Adds an <c>IF NOT EXISTS (<paramref name="clause"/>) BEGIN ... END</c> block.</summary>
-    IQueryBuilder IfNotExists(string clause, Action<IQueryBuilder> ifBlock, Action<IQueryBuilder>? elseBlock = null);
+    //
+    // If / IfNotExists emitted T-SQL procedural control flow (IF ... BEGIN ... END ELSE ...),
+    // which is invalid on PostgreSQL and SQLite. They now ship as extension methods in the
+    // DapperPipeline.SqlServer package, so they exist only where they actually work.
+    //
+    // For portable conditionals, put the condition in a predicate rather than a procedural block:
+    //     INSERT INTO t (a) SELECT {a} WHERE NOT EXISTS (SELECT 1 FROM t WHERE k = {k})
+    // and when the condition is known in your app, just branch in C# inside Build().
 
     // -------------------------------------------------------------------------
     // WHERE / JOIN

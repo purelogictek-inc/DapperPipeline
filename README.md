@@ -396,20 +396,70 @@ Identical values used in multiple commands bind once. The first command to use a
 
 This applies across all paths: primitive interpolation, `Bind`, and `SetState` auto-binding all feed the same value index.
 
-## Conditional SQL — `If`
+## Conditional SQL
+
+There are two different things people mean by "conditional SQL", and they have different answers.
+
+### 1. The condition is known in your app → just use C#
+
+`Build` is an ordinary C# method. If your app knows the answer, branch in C# — it's portable, and it
+emits less SQL:
 
 ```csharp
-// Simple if/else
-builder.If($"@Status = 'pending'",
+public override void Build(IQueryBuilder builder, IPipelineState state)
+{
+    if (filter.OnlyPending)
+        builder.Append($"SELECT * FROM Orders WHERE Status = 'pending'");
+    else
+        builder.Append($"SELECT * FROM Orders WHERE Status = {status}");
+}
+```
+
+Most "conditional SQL" is really this. To drop a whole command, use
+[`ShouldInclude`](#conditional-inclusion--shouldinclude).
+
+### 2. The condition depends on data in the database → use a predicate, not a branch
+
+Put the condition in the statement's own `WHERE`. This is portable across all three engines and
+stays fully parameterized:
+
+```csharp
+// Instead of: IF NOT EXISTS (...) INSERT ...
+builder.Append($"""
+    INSERT INTO orders (id, status)
+    SELECT {id}, {status}
+    WHERE NOT EXISTS (SELECT 1 FROM orders WHERE id = {id})
+    """);
+```
+
+| Procedural (SQL Server only) | Portable equivalent |
+|---|---|
+| `IF cond THEN INSERT …` | `INSERT … SELECT … WHERE (cond)` |
+| `IF NOT EXISTS(…) INSERT …` | `INSERT … SELECT … WHERE NOT EXISTS (…)` |
+| `IF cond THEN UPDATE t SET x=1 WHERE id=5` | `UPDATE t SET x=1 WHERE id=5 AND (cond)` |
+
+### `If` / `IfNotExists` — SQL Server only
+
+T-SQL procedural blocks are available **only when you reference `PureLogicTek.DapperPipeline.SqlServer`**,
+as extension methods on `IQueryBuilder`:
+
+```csharp
+builder.If("@Status = 'pending'",
     ifBlock   => ifBlock.Append($"SELECT * FROM PendingOrders"),
     elseBlock => elseBlock.Append($"SELECT * FROM Orders WHERE Status = {status}"));
 
-// Fluent multi-branch
 builder.If(d => d
-    .Clause($"@Status = 'pending'",  b => b.Append($"SELECT * FROM PendingOrders"))
-    .Clause($"@Status = 'complete'", b => b.Append($"SELECT * FROM CompletedOrders"))
-    .Else(                           b => b.Append($"SELECT * FROM Orders")));
+    .Clause("@Status = 'pending'",  b => b.Append($"SELECT * FROM PendingOrders"))
+    .Clause("@Status = 'complete'", b => b.Append($"SELECT * FROM CompletedOrders"))
+    .Else(                          b => b.Append($"SELECT * FROM Orders")));
 ```
+
+These emit `IF (…) BEGIN … END ELSE BEGIN … END`, which **has no equivalent** on the other engines —
+so they don't exist there. It's a compile error, not a runtime surprise:
+
+- **SQLite** has no procedural `IF` at all (`CASE` is an expression, not a statement).
+- **PostgreSQL**'s only option is `DO $$ … $$`, which takes **no parameters** and **returns void** —
+  so it can neither bind values nor produce a result set for `Process` to read.
 
 ## WHERE Builder
 

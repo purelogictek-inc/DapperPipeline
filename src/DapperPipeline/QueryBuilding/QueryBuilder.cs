@@ -255,19 +255,6 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
     // IQueryBuilder — conditional SQL
     // -------------------------------------------------------------------------
 
-    public IQueryBuilder If(Action<IQueryBuilderDecisionBuilder> builder)
-    {
-        using var decision = new DecisionBuilder(this);
-        builder.Invoke(decision);
-        return this;
-    }
-
-    public IQueryBuilder If(string clause, Action<IQueryBuilder> ifBlock, Action<IQueryBuilder>? elseBlock = null)
-        => IfWithElse($"IF ({clause}) BEGIN", ifBlock, elseBlock);
-
-    public IQueryBuilder IfNotExists(string clause, Action<IQueryBuilder> ifBlock, Action<IQueryBuilder>? elseBlock = null)
-        => IfWithElse($"IF NOT EXISTS ({clause}) BEGIN", ifBlock, elseBlock);
-
     // -------------------------------------------------------------------------
     // IQueryBuilder — WHERE / JOIN
     // -------------------------------------------------------------------------
@@ -382,20 +369,5 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
         else
             _fullSql.Append(c);
         return this;
-    }
-
-    private IQueryBuilder IfWithElse(string statement, Action<IQueryBuilder>? ifBlock, Action<IQueryBuilder>? elseBlock)
-    {
-        if (ifBlock == null) return this;
-        UpdateSql(statement, false, true).AddIndent();
-        ifBlock(this);
-        if (elseBlock != null)
-        {
-            RemoveIndent();
-            UpdateSql("END ELSE BEGIN", false, true).AddIndent();
-            elseBlock(this);
-        }
-        RemoveIndent();
-        return UpdateSql("END", false, true);
     }
 }

@@ -10,6 +10,16 @@ dotnet add package PureLogicTek.DapperPipeline.SqlServer
 services.AddDapperPipeline(new SqlServerDialect(connectionString));
 ```
 
+Also provides the **T-SQL-only** `If` / `IfNotExists` builder extensions. They emit
+`IF (…) BEGIN … END ELSE BEGIN … END`, which has no equivalent on PostgreSQL or SQLite, so they ship
+here rather than in the core — referencing this package is what makes them exist:
+
+```csharp
+builder.If("@Status = 'pending'",
+    b => b.Append($"SELECT * FROM PendingOrders"),
+    b => b.Append($"SELECT * FROM Orders WHERE Status = {status}"));
+```
+
 Provides `SqlServerDialect` (backed by `Microsoft.Data.SqlClient`):
 
 - Full T-SQL parameter scanning, including `DECLARE @Var TABLE` variable detection and auto-scoping
