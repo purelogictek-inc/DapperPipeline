@@ -30,6 +30,10 @@ public sealed class SqliteDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    /// <remarks>SQLite literals — 1/0 for booleans, x'..' for blobs.</remarks>
+    public ISqlDebugRenderer DebugRenderer => SqliteDebugRenderer.Instance;
+
+    /// <inheritdoc />
     /// <remarks>
     /// Serializable — SQLite's actual behaviour, and one of only two levels
     /// Microsoft.Data.Sqlite accepts (the other being ReadUncommitted).

@@ -9,7 +9,10 @@ namespace DapperPipeline.QueryBuilding;
 using Abstractions;
 using Utilities;
 
-internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRenderer rowSetRenderer)
+internal sealed partial class QueryBuilder(
+    IParameterScanner scanner,
+    IRowSetRenderer rowSetRenderer,
+    ISqlDebugRenderer debugRenderer)
     : Pipeline.IQueryBuilderInternal
 {
     private int _indents;

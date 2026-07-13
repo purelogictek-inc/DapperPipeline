@@ -1,4 +1,5 @@
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.Dialects.PostgreSql;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
@@ -21,7 +22,7 @@ public sealed class RowSetTests
     /// <summary>Builds SQL with the identical consumer code, varying only the dialect's renderer.</summary>
     private static (string Sql, IDictionary<string, object?> Parameters) BuildWith(IRowSetRenderer renderer)
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), renderer);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), renderer, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         // ── This block is byte-for-byte identical on every dialect. That is the whole point. ──
@@ -101,7 +102,7 @@ public sealed class RowSetTests
     [Fact]
     public void Empty_rowset_still_renders_a_selectable_table()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         var empty = qb.RowSet("entry", Array.Empty<Entry>(), map =>
@@ -121,7 +122,7 @@ public sealed class RowSetTests
     {
         var many = Enumerable.Range(0, 1500).Select(i => new Entry($"s{i}", i)).ToList();
 
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
         var rs = qb.RowSet("entry", many, map =>
         {
@@ -138,7 +139,7 @@ public sealed class RowSetTests
     [Fact]
     public void Rowset_rejects_a_duplicate_column()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         Assert.Throws<InvalidOperationException>(() => qb.RowSet("entry", Entries, map =>
@@ -151,7 +152,7 @@ public sealed class RowSetTests
     [Fact]
     public void Rowset_rejects_an_unsafe_alias()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         // The alias is emitted as raw SQL, so it must be validated like any identifier.

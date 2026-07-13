@@ -33,6 +33,14 @@ public sealed class SqlServerDialect : IDatabaseDialect
     /// <remarks>Snapshot — SQL Server's own, and what this dialect has always used.</remarks>
     public IsolationLevel DefaultIsolationLevel => IsolationLevel.Snapshot;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// A <c>DECLARE</c>/<c>SET</c> preamble followed by the SQL — paste-and-run in SSMS. This is the
+    /// rendering the core used to emit for <em>every</em> dialect, which made <c>ToDebug()</c>
+    /// useless in psql and the sqlite3 shell.
+    /// </remarks>
+    public ISqlDebugRenderer DebugRenderer => SqlServerDebugRenderer.Instance;
+
     /// <summary>
     /// How <c>RowSet(...)</c> is rendered. Defaults to <see cref="SqlServerRowSetStrategy.OpenJson"/>,
     /// which binds one parameter for any number of rows and needs nothing installed in the database.

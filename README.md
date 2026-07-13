@@ -766,9 +766,21 @@ with no SQL Server coupling.
 
 ```csharp
 Console.WriteLine(builder.ToDebug());
-// Emits DECLARE / SET statements for every parameter, followed by the full SQL —
-// paste directly into SSMS or psql to run standalone.
 ```
+
+Each dialect renders debug output the way **its own client** expects — the rendering is part of
+`IDatabaseDialect`, not the core:
+
+| Dialect | Output | Paste into |
+|---|---|---|
+| SQL Server | `DECLARE @p001_Id AS bigint` / `SET @p001_Id = 42` + the SQL | SSMS |
+| PostgreSQL | values inlined — `TRUE`/`FALSE`, `ARRAY[…]` for the arrays a rowset binds | psql |
+| SQLite | values inlined — `1`/`0` for booleans, `x'…'` for blobs | `sqlite3` |
+| custom dialect | generic inlined literals | anything |
+
+> ⚠️ **Debug output is for reading, never for running.** Inlining values produces exactly the
+> concatenated SQL this library exists to prevent. The pipeline executes the *parameterized* form —
+> the rendering is labelled accordingly.
 
 ## License
 

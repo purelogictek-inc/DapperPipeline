@@ -1,4 +1,5 @@
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.Dialects.Sqlite;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.QueryBuilding;
@@ -14,7 +15,7 @@ public sealed class SqliteRowSetTests
 
     private static (string Sql, IDictionary<string, object?> Parameters) Build(SqliteDialect dialect)
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), dialect.RowSetRenderer);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), dialect.RowSetRenderer, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         var entries = qb.RowSet("entry", Entries, map =>
@@ -89,7 +90,7 @@ public sealed class SqliteRowSetTests
         var many = Enumerable.Range(0, 5000).Select(i => new Entry($"s{i}", i)).ToList();
 
         var dialect = new SqliteDialect("Data Source=:memory:");
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), dialect.RowSetRenderer);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), dialect.RowSetRenderer, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
 
         var rs = qb.RowSet("entry", many, map =>

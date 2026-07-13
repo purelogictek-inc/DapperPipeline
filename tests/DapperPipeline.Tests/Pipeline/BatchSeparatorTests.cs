@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.Dialects.PostgreSql;
 using DapperPipeline.Dialects.Sqlite;
 using DapperPipeline.Dialects.SqlServer;
@@ -19,7 +20,7 @@ public sealed class BatchSeparatorTests
     /// <summary>Mimics the pipeline's per-command loop, including the separator it must emit.</summary>
     private static string BuildBatch(IDatabaseDialect dialect, params Action<IQueryBuilder>[] commands)
     {
-        var qb = new QueryBuilder(dialect.Scanner, dialect.RowSetRenderer);
+        var qb = new QueryBuilder(dialect.Scanner, dialect.RowSetRenderer, InlineDebugRenderer.Instance);
 
         var scope = 1;
         foreach (var build in commands)

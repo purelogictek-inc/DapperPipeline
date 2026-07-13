@@ -31,6 +31,10 @@ public sealed class PostgreSqlDialect : IDatabaseDialect
     public IParameterScanner Scanner => _scanner;
 
     /// <inheritdoc />
+    /// <remarks>PostgreSQL literals — ARRAY[...] for the arrays a rowset binds, TRUE/FALSE for booleans.</remarks>
+    public ISqlDebugRenderer DebugRenderer => PostgreSqlDebugRenderer.Instance;
+
+    /// <inheritdoc />
     /// <remarks>ReadCommitted — PostgreSQL's own default. It has no Snapshot level.</remarks>
     public IsolationLevel DefaultIsolationLevel => IsolationLevel.ReadCommitted;
 

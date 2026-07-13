@@ -1,4 +1,5 @@
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
 using DapperPipeline.QueryBuilding;
@@ -16,7 +17,7 @@ public sealed class StringAndWhereBindingTests
 {
     private static QueryBuilder NewBuilder()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         qb.BeginCommandScope(1);
         return qb;
     }

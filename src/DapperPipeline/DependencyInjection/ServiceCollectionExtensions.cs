@@ -109,6 +109,11 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IRowSetRenderer>(sp =>
             sp.GetRequiredService<IDatabaseDialect>().RowSetRenderer);
 
+        // ToDebug() output is engine-specific too: SQL Server wants a DECLARE/SET preamble, while
+        // psql and the sqlite3 shell want the values inlined.
+        services.TryAddSingleton<ISqlDebugRenderer>(sp =>
+            sp.GetRequiredService<IDatabaseDialect>().DebugRenderer);
+
         // The pipeline logs, but logging must not be *mandatory*: a web host registers ILogger<T>,
         // while a console runner or a test fixture does not — and the failure is another opaque DI
         // resolution error.

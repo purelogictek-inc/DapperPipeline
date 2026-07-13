@@ -1,4 +1,5 @@
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.RowSets;
 using DapperPipeline.QueryBuilding;
 using NSubstitute;
@@ -14,7 +15,7 @@ public sealed class WhereBuilderTests
         var scanner = Substitute.For<IParameterScanner>();
         scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>())
             .Returns(ci => (string)ci[0]);
-        _qb = new QueryBuilder(scanner, ValuesRowSetRenderer.Instance);
+        _qb = new QueryBuilder(scanner, ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         _qb.BeginCommandScope(0);
     }
 

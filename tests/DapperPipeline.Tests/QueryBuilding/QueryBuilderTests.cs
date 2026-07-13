@@ -1,4 +1,5 @@
 using DapperPipeline.Abstractions;
+using DapperPipeline.Debugging;
 using DapperPipeline.Dialects.SqlServer;
 using DapperPipeline.Interpolation;
 using DapperPipeline.RowSets;
@@ -17,7 +18,7 @@ public sealed class QueryBuilderTests
         _scanner = Substitute.For<IParameterScanner>();
         _scanner.Process(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<ISet<string>>())
             .Returns(ci => (string)ci[0]);
-        _qb = new QueryBuilder(_scanner, ValuesRowSetRenderer.Instance);
+        _qb = new QueryBuilder(_scanner, ValuesRowSetRenderer.Instance, InlineDebugRenderer.Instance);
         _qb.BeginCommandScope(0);
     }
 
@@ -178,13 +179,17 @@ public sealed class QueryBuilderTests
     [Fact]
     public void ToDebug_includes_declare_and_set_for_int_param()
     {
-        var qb = new QueryBuilder(new SqlServerParameterScanner(), ValuesRowSetRenderer.Instance);
+        // The DECLARE/SET preamble is SQL Server's rendering, so ask the SQL Server dialect for it.
+        // It used to be hardcoded in the core, which is why ToDebug() was nonsense on other engines.
+        var dialect = new SqlServerDialect("Server=.;Database=d;Trusted_Connection=true;");
+        var qb = new QueryBuilder(dialect.Scanner, dialect.RowSetRenderer, dialect.DebugRenderer);
         qb.BeginCommandScope(1);
 
         long orderId = 42L;
         qb.Append($"SELECT {orderId}");
 
         var debug = qb.ToDebug();
+        Assert.Contains("DECLARE", debug);
         Assert.Contains("@p001_OrderId", debug);
         Assert.Contains("42", debug);
     }

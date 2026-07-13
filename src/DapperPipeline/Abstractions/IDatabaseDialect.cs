@@ -84,6 +84,17 @@ public interface IDatabaseDialect
     string StatementSeparator => ";\n";
 
     /// <summary>
+    /// Renders <c>IQueryBuilder.ToDebug()</c> output for this engine.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <c>InlineDebugRenderer</c>, which substitutes values as literals and so is
+    /// pasteable anywhere. SQL Server overrides it to emit the <c>DECLARE</c>/<c>SET</c> preamble
+    /// that SSMS expects — a rendering that was previously hardcoded in the core and produced
+    /// nonsense for psql and the sqlite3 shell.
+    /// </remarks>
+    ISqlDebugRenderer DebugRenderer => Debugging.InlineDebugRenderer.Instance;
+
+    /// <summary>
     /// Renders <see cref="ISqlRowSet"/>s as a table expression for this engine.
     /// </summary>
     /// <remarks>
