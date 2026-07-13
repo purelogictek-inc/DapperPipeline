@@ -21,6 +21,9 @@ namespace DapperPipeline.Abstractions;
 /// </remarks>
 public interface ISqlBindable
 {
-    /// <summary>The underlying value to bind as a SQL parameter.</summary>
-    string Value { get; }
+    /// <summary>
+    /// The underlying value to bind as a SQL parameter. May be null — a null binds SQL NULL,
+    /// which is not the same thing as an empty string.
+    /// </summary>
+    string? Value { get; }
 }

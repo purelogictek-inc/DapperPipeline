@@ -10,7 +10,7 @@
   <!-- Shared package identity for all packable projects (core + dialect satellites).
        Inert for non-packable projects (tests, benchmarks). -->
   <PropertyGroup Label="Packaging">
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
     <Authors>PureLogicTek, Inc.</Authors>
     <Company>PureLogicTek, Inc.</Company>
     <Copyright>Copyright (c) 2026 PureLogicTek, Inc.</Copyright>

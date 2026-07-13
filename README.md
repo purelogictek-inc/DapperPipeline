@@ -72,6 +72,7 @@ does), and falls back to a no-op logger if not — so `AddDapperPipeline` works 
 
 Then register your commands. You can register them individually or let the library scan an assembly and register all implementations automatically:
 
+<!-- readme-test: skip -->
 ```csharp
 // Manual — explicit control over which commands are registered
 services.AddTransient<IGetOrderCommand, GetOrderCommand>();
@@ -91,6 +92,7 @@ Commands implement two methods: `Build` (compose SQL via interpolation) and `Pro
 
 A command file needs two usings:
 
+<!-- readme-test: skip -->
 ```csharp
 using DapperPipeline.Abstractions;   // IQueryBuilder, IPipelineState, Append, ISqlBindable, ISqlIdentifier
 using DapperPipeline.Commands;       // BaseQueryCommand, BaseQueryCommand<T>
@@ -150,6 +152,7 @@ public sealed class LogOrderViewCommand : BaseQueryCommand, ILogOrderViewCommand
 
 `builder.Append($"...")` uses a custom `[InterpolatedStringHandler]` that **only accepts safe types** at interpolation holes. Raw string interpolation is a **compile error**.
 
+<!-- readme-test: skip -->
 ```csharp
 // ✅ Compiles — typed value, auto-parameterized
 builder.Append($"WHERE Id = {orderId}");
@@ -172,7 +175,8 @@ builder.Append($"WHERE Name = '{userInput}'");
 | `ISqlIdentifier` (consumer's typed identifier wrappers, e.g., `TableName`) | Emitted as raw SQL identifier |
 | `SqlIdentifier` (from `Sql.Identifier(string)`) | Validates the string, emits raw |
 | `BoundParam<T>` (returned from `state.Bound<T>(name)`) | Emits the registered name (`@MyName`) directly |
-| **`string`** | **Compile error** — wrap with `Sql.Identifier(...)` for identifier position, or pass the value as a typed parameter |
+| `SqlText` (from `Sql.Text(string)`) | Binds the string as a **parameter** — the safe door for string *values* |
+| **bare `string`** | **Compile error** — use `Sql.Text(...)` for a value, or `Sql.Identifier(...)` for an identifier |
 
 ### Identifier position — `Sql.Identifier(...)`
 
@@ -189,6 +193,7 @@ builder.Append($"INSERT INTO {Identifier(tableName)} VALUES (...)");
 
 Typed identifier wrappers don't need `Identifier(...)`:
 
+<!-- readme-test: skip -->
 ```csharp
 public sealed record TableName(string Value) : ISqlIdentifier;
 
@@ -274,6 +279,7 @@ Two complementary mechanisms for passing data into commands.
 
 Pass a domain POCO; the pipeline stores it for typed access **and** auto-binds its scalar properties under names of the form `@TypeNamePropertyName`:
 
+<!-- readme-test: skip -->
 ```csharp
 public sealed class UserSession   // plain POCO — no library types
 {
@@ -300,7 +306,7 @@ public override void Build(IQueryBuilder builder, IPipelineState state)
     builder.Append($"""
         SELECT * FROM Orders
         WHERE BranchId = {s.BranchId}        -- value-dedup resolves to @UserSessionBranchId
-          AND CreatedBy = {s.UserId}          -- value-dedup resolves to @UserSessionUserId
+          AND CreatedBy = {Text(s.UserId)}     -- value-dedup resolves to @UserSessionUserId
         """);
 }
 ```
@@ -313,6 +319,7 @@ The `@TypeName` prefix prevents name collisions across multiple state types. `st
 
 For ad-hoc shared values without defining a POCO, or when you want a specific clean parameter name:
 
+<!-- readme-test: skip -->
 ```csharp
 await pipeline
     .Bind("BranchId", 42L)              // → @BranchId
@@ -411,7 +418,7 @@ public override void Build(IQueryBuilder builder, IPipelineState state)
     if (filter.OnlyPending)
         builder.Append($"SELECT * FROM Orders WHERE Status = 'pending'");
     else
-        builder.Append($"SELECT * FROM Orders WHERE Status = {status}");
+        builder.Append($"SELECT * FROM Orders WHERE Status = {Text(status)}");
 }
 ```
 
@@ -427,8 +434,8 @@ stays fully parameterized:
 // Instead of: IF NOT EXISTS (...) INSERT ...
 builder.Append($"""
     INSERT INTO orders (id, status)
-    SELECT {id}, {status}
-    WHERE NOT EXISTS (SELECT 1 FROM orders WHERE id = {id})
+    SELECT {orderId}, {Text(status)}
+    WHERE NOT EXISTS (SELECT 1 FROM orders WHERE id = {orderId})
     """);
 ```
 
@@ -446,7 +453,7 @@ as extension methods on `IQueryBuilder`:
 ```csharp
 builder.If("@Status = 'pending'",
     ifBlock   => ifBlock.Append($"SELECT * FROM PendingOrders"),
-    elseBlock => elseBlock.Append($"SELECT * FROM Orders WHERE Status = {status}"));
+    elseBlock => elseBlock.Append($"SELECT * FROM Orders WHERE Status = {Text(status)}"));
 
 builder.If(d => d
     .Clause("@Status = 'pending'",  b => b.Append($"SELECT * FROM PendingOrders"))
@@ -463,6 +470,9 @@ so they don't exist there. It's a compile error, not a runtime surprise:
 
 ## WHERE Builder
 
+`w.Append($"...")` binds values as parameters, exactly like `builder.Append` — a bare `string` in a
+hole is a compile error.
+
 ```csharp
 var where = builder.Where(w => {
     w.Append($"o.BranchId = {branchId}");
@@ -472,6 +482,10 @@ var where = builder.Where(w => {
 
 builder.Append($"SELECT * FROM Orders o {where}");
 ```
+
+> ⚠️ `w.Add(string)` is the **raw escape hatch** — the WHERE-clause equivalent of `AppendRaw`. It takes
+> a raw string and gives **no** injection protection (`w.Add($"name = '{userInput}'")` compiles *and*
+> injects). Use `Append` unless you genuinely need unparameterizable SQL.
 
 ## CTEs
 
@@ -604,6 +618,7 @@ public interface IPipelineBehavior
 
 `PipelineContext` carries the names of included and excluded commands for the current run:
 
+<!-- readme-test: skip -->
 ```csharp
 public sealed class PipelineContext
 {
@@ -639,6 +654,7 @@ public sealed class PipelineLoggingBehavior(ILogger<PipelineLoggingBehavior> log
 
 ### Registering behaviors
 
+<!-- readme-test: skip -->
 ```csharp
 services.AddSingleton<IPipelineBehavior, PipelineLoggingBehavior>();
 services.AddSingleton<IPipelineBehavior, MetricsBehavior>();
@@ -691,6 +707,7 @@ services.AddSingleton<IErrorMapper>(
 Register as many `IErrorMapper`s as you like — they **compose automatically**, and the first non-null
 result wins:
 
+<!-- readme-test: skip -->
 ```csharp
 services.AddSingleton<IErrorMapper>(new ErrorRange(50000, 51000, ...));
 services.AddSingleton<IErrorMapper>(new ErrorRange(60000, 61000, ...));
@@ -703,6 +720,7 @@ Error mappers are **optional**. If none are registered — or none handle the er
 
 Some stored procs return an error string as the first result set (empty = success). Handle this pattern with `EmitError` / `OnError`:
 
+<!-- readme-test: skip -->
 ```csharp
 // In Process():
 processor.Read<string>(r => EmitError(r.SingleOrDefault()));
@@ -719,8 +737,8 @@ The pipeline retries automatically for transient errors. The retry strategy is d
 
 ```csharp
 await pipeline
-    .Context(ctx => ctx.MaxRetryAttempts = 3)
-    .ResolveAndRegister<IMyCommand>(...)
+    .Context(ctx => ctx.RetryCount = 3)
+    .ResolveAndRegister<IMyCommand>(cmd => { })
     .RunAsync(token);
 ```
 

@@ -110,9 +110,15 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
     public void AppendScannedLiteral(string literal)
     {
         if (string.IsNullOrEmpty(literal)) return;
-        var processed = scanner.Process(literal, _scopeIndex, _scopedParams);
-        _fullSql.Append(processed);
+        _fullSql.Append(ScanLiteral(literal));
     }
+
+    /// <summary>
+    /// Runs a literal through the dialect's parameter scanner and returns it, without appending.
+    /// The WHERE builder composes a clause of its own, so it needs the text back.
+    /// </summary>
+    internal string ScanLiteral(string literal) =>
+        string.IsNullOrEmpty(literal) ? literal : scanner.Process(literal, _scopeIndex, _scopedParams);
 
     public void AppendIdentifier(string identifier)
     {
@@ -121,13 +127,20 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
     }
 
     public void BindAndEmit(object? value, string callerExpr)
+        => _fullSql.Append(BindValue(value, callerExpr));
+
+    /// <summary>
+    /// Binds a value and returns the parameter name, <em>without</em> writing to the SQL buffer.
+    /// </summary>
+    /// <remarks>
+    /// Callers that build a fragment elsewhere and place it later need the name, not an append —
+    /// the WHERE builder composes a clause, and a rowset renderer returns a table expression.
+    /// </remarks>
+    internal string BindValue(object? value, string callerExpr)
     {
         // Cross-command value dedup — null doesn't dedupe (each null bind gets a fresh name)
         if (value is not null && _valueIndex.TryGetValue(value, out var existing))
-        {
-            _fullSql.Append(existing);
-            return;
-        }
+            return existing;
 
         // Auto-name with tier escalation
         foreach (var sanitized in ParamNameSanitizer.GenerateCandidates(callerExpr))
@@ -144,8 +157,7 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
 
                 _parameters[fullName] = value;
                 if (value is not null) _valueIndex[value] = fullName;
-                _fullSql.Append(fullName);
-                return;
+                return fullName;
             }
             // Collision with different expression — try next tier
         }
@@ -267,27 +279,27 @@ internal sealed partial class QueryBuilder(IParameterScanner scanner, IRowSetRen
 
     public IWhereBuilder Where(Action<IWhereBuilder>? builder = null, bool upCase = false)
     {
-        var where = new WhereClauseBuilder(_indents, upCase: upCase);
+        var where = new WhereClauseBuilder(this, _indents, upCase: upCase);
         builder?.Invoke(where);
         return where;
     }
 
     public IWhereBuilder Where(IWhereBuilder source, Action<IWhereBuilder>? builder = null, bool upCase = false)
     {
-        var where = new WhereClauseBuilder(_indents, source, upCase);
+        var where = new WhereClauseBuilder(this, _indents, source, upCase);
         builder?.Invoke(where);
         return where;
     }
 
     public IQueryBuilder Where(out IWhereBuilder where, Action<IWhereBuilder>? builder = null, bool upCase = false)
     {
-        where = new WhereClauseBuilder(_indents, upCase: upCase);
+        where = new WhereClauseBuilder(this, _indents, upCase: upCase);
         builder?.Invoke(where);
         return this;
     }
 
     public IWhereBuilder Where(IWhereBuilder source, string target, string replacement)
-        => new WhereClauseBuilder(_indents, source, target, replacement);
+        => new WhereClauseBuilder(this, _indents, source, target, replacement);
 
     // -------------------------------------------------------------------------
     // IQueryBuilder — CTE

@@ -19,21 +19,35 @@ internal sealed partial class QueryBuilder
         private readonly List<TypedClause> _joins = [];
         private readonly List<TypedClause> _where = [];
 
-        internal WhereClauseBuilder(int indents, bool upCase = false)
+        // The owning builder — a clause has to bind its values into the same parameter set as the
+        // rest of the command, so the WHERE builder cannot be a standalone string concatenator.
+        private readonly QueryBuilder _owner;
+
+        internal WhereClauseBuilder(QueryBuilder owner, int indents, bool upCase = false)
         {
+            _owner = owner;
             _indent = new string('\t', indents);
             _upCase = upCase;
         }
 
-        internal WhereClauseBuilder(int indents, IWhereBuilder source, bool upCase = false) : this(indents, upCase)
+        /// <inheritdoc />
+        public string ScanClauseLiteral(string literal) => _owner.ScanLiteral(literal);
+
+        /// <inheritdoc />
+        public string BindClauseValue(object? value, string callerExpr) =>
+            _owner.BindValue(value, callerExpr);
+
+        internal WhereClauseBuilder(QueryBuilder owner, int indents, IWhereBuilder source, bool upCase = false)
+            : this(owner, indents, upCase)
         {
             if (source is not WhereClauseBuilder src) return;
             if (src._joins.Count > 0) _joins.AddRange(src._joins);
             if (src._where.Count > 0) _where.AddRange(src._where);
         }
 
-        internal WhereClauseBuilder(int indents, IWhereBuilder source, string target, string replacement)
+        internal WhereClauseBuilder(QueryBuilder owner, int indents, IWhereBuilder source, string target, string replacement)
         {
+            _owner = owner;
             _indent = new string('\t', indents);
             if (source is not WhereClauseBuilder src) return;
             _upCase = src._upCase;

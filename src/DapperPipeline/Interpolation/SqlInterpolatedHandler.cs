@@ -38,6 +38,17 @@ public ref struct SqlInterpolatedHandler
         => _qb.AppendIdentifier(id.Value);
 
     /// <summary>
+    /// Clause-position: a WHERE builder emits its assembled clause.
+    /// </summary>
+    /// <remarks>
+    /// Emitted verbatim, and deliberately <em>not</em> re-scanned: the clause's values were already
+    /// bound as parameters when it was composed, so running it back through the parameter scanner
+    /// would reject its own <c>@p001_…</c> names as unknown.
+    /// </remarks>
+    public void AppendFormatted(IWhereBuilder where)
+        => _qb.AppendIdentifier(where.ToString() ?? "");
+
+    /// <summary>
     /// Table-position: a rowset emits a dialect-rendered derived table and binds its own values.
     /// </summary>
     /// <remarks>

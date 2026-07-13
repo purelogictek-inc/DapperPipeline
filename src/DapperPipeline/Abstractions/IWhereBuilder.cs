@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace DapperPipeline.Abstractions;
 
 /// <summary>
@@ -9,8 +11,32 @@ public interface IWhereBuilder
     /// <summary>Returns <c>true</c> if no clauses have been added.</summary>
     bool IsEmpty();
 
-    /// <summary>Adds a <c>WHERE</c> / <c>AND</c> clause, or an <c>OR</c> clause if <paramref name="isOr"/> is true.</summary>
+    /// <summary>
+    /// Adds a clause <strong>verbatim</strong>, bypassing the interpolation handler and parameter
+    /// binding — the raw escape hatch, exactly like <c>IQueryBuilder.AppendRaw</c>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This takes a raw <see cref="string"/>, so it offers <strong>no</strong> SQL-injection
+    /// protection: <c>Add($"name = '{userInput}'")</c> compiles and injects. Prefer
+    /// <c>Append($"...")</c>, which binds values as parameters and rejects raw strings at compile
+    /// time. Use this only for SQL that genuinely cannot be parameterized.
+    /// </remarks>
     IWhereBuilder Add(string clause, bool isOr = false);
+
+    // -------------------------------------------------------------------------
+    // Handler-dispatch surface (called by WhereInterpolatedHandler, not by user code)
+    // -------------------------------------------------------------------------
+
+    /// <summary>Routes a literal portion of a clause through the dialect's parameter scanner.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    string ScanClauseLiteral(string literal);
+
+    /// <summary>
+    /// Binds a value as a parameter and returns the name to write into the clause. The clause text
+    /// is assembled by the handler, so this must not touch the SQL buffer.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    string BindClauseValue(object? value, string callerExpr);
 
     /// <summary>Clears all clauses.</summary>
     IWhereBuilder Clear();
