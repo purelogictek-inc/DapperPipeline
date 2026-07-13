@@ -214,7 +214,7 @@ public sealed class PostgresIntegrationTests : IDisposable
         public override void Build(IQueryBuilder builder, IPipelineState state)
         {
             var source = "espn";
-            var where = builder.Where(w => w.Append($"source = {Text(source)}"));
+            var where = builder.Where(w => w.Append($"source = {source.SqlParam()}"));
             builder.Append($"SELECT external_id FROM {Identifier(Schema)}.external_id {where}");
         }
 

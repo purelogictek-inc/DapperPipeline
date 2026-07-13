@@ -23,7 +23,7 @@ public sealed class DebugRenderingTests
 
         var orderId = 42L;
         var name = "o'brien";
-        qb.Append($"SELECT * FROM Orders WHERE Id = {orderId} AND Name = {Text(name)}");
+        qb.Append($"SELECT * FROM Orders WHERE Id = {orderId} AND Name = {name.SqlParam()}");
 
         return qb.ToDebug();
     }

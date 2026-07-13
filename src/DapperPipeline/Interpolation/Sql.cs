@@ -45,6 +45,11 @@ public static class Sql
     /// </code>
     /// </example>
     /// </remarks>
+    [Obsolete(
+        "Use x.SqlParam() instead — identical behaviour, better name, and IntelliSense offers it the " +
+        "moment you type the variable. 'Text' describes the input (which you already knew); 'SqlParam' " +
+        "describes what happens to it: it becomes a bound parameter. Sql.Text will be removed in 2.0.",
+        error: false)]
     public static SqlText Text(string? value) => new(value);
 }
 

@@ -30,7 +30,7 @@ public sealed class CreateOrderCommand : BaseQueryCommand<long>, ICreateOrderCom
 
         builder.Append($"""
             INSERT INTO orders (customer, status, branch_id, created_by)
-            VALUES ({Text(Customer)}, 'new', {session.BranchId}, {Text(session.UserId)})
+            VALUES ({Customer.SqlParam()}, 'new', {session.BranchId}, {session.UserId.SqlParam()})
             RETURNING id
             """);
         //           ^^^^^^^^^^^^^^ every value above is BOUND, never concatenated.
@@ -101,7 +101,7 @@ public sealed class GetOrderCommand : BaseQueryCommand<Order?>, IGetOrderCommand
 
             // Plain C# control flow. No SQL-side conditionals needed, and it's portable.
             if (StatusFilter is not null)
-                w.Append($"o.status = {Text(StatusFilter)}");
+                w.Append($"o.status = {StatusFilter.SqlParam()}");
         });
 
         builder.Append($"""
@@ -152,7 +152,7 @@ public sealed class AuditCommand : BaseQueryCommand, IAuditCommand
     {
         var session = state.Require<UserSession>();
         builder.Append($"""
-            INSERT INTO audit (order_id, actor) VALUES ({OrderId}, {Text(session.UserId)})
+            INSERT INTO audit (order_id, actor) VALUES ({OrderId}, {session.UserId.SqlParam()})
             """);
     }
 

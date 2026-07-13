@@ -63,11 +63,11 @@ public sealed class WithoutTransactionTests : IDisposable
 
         public override void Build(IQueryBuilder builder, IPipelineState state)
         {
-            builder.Append($"INSERT INTO t (v) VALUES ({Sql.Text(Good)});");
+            builder.Append($"INSERT INTO t (v) VALUES ({Good.SqlParam()});");
 
             // Fails against the UNIQUE index — the whole batch should roll back when transactional.
             if (Duplicate is not null)
-                builder.Append($"INSERT INTO t (v) VALUES ({Sql.Text(Duplicate)});");
+                builder.Append($"INSERT INTO t (v) VALUES ({Duplicate.SqlParam()});");
         }
 
         public override void Process(IDapperResultProcessor processor) { }

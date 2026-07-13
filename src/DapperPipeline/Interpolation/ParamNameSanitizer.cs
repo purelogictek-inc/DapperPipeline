@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace DapperPipeline.Interpolation;
 
 /// <summary>
@@ -14,8 +16,12 @@ namespace DapperPipeline.Interpolation;
 /// that's not already claimed by a different expression in the current command scope.
 /// </para>
 /// </remarks>
-internal static class ParamNameSanitizer
+internal static partial class ParamNameSanitizer
 {
+    /// <summary>An identifier or member chain — <c>customer</c>, <c>session.UserId</c>. Not a lambda.</summary>
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")]
+    private static partial Regex SimpleExpression();
+
     private const int MaxLength = 32;
 
     /// <summary>
@@ -32,12 +38,36 @@ internal static class ParamNameSanitizer
 
         // Whole-expression preprocessing
         var s = callerExpr.Trim();
+
+        // Unwrap a wrapper call around a plain variable: the name lives in the ARGUMENT, not the
+        // wrapper. `Sql.Text(customer)` must yield @p001_Customer, not @p001_Text_customer_ — and it
+        // must agree with `customer.SqlParam()`, which yields @p001_Customer. Two spellings of one
+        // thing producing two different parameter names is a debugging trap for no benefit.
+        //
+        // Only unwrap when the argument is a plain identifier or member chain. `Count(x => x > 1)`
+        // must NOT be unwrapped into a name built from a lambda.
+        var open = s.IndexOf('(');
+        if (open > 0 && s.EndsWith(')'))
+        {
+            var inner = s[(open + 1)..^1].Trim();
+            if (inner.Length > 0 && SimpleExpression().IsMatch(inner))
+                s = inner;
+        }
+
         if (s.StartsWith('_')) s = s[1..];                // strip leading _ (field convention)
         if (s.EndsWith(".Value")) s = s[..^6];            // strip trailing .Value (typed unwrap)
 
         // Split on . then preprocess each segment
         var rawSegments = s.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (rawSegments.Length == 0) yield break;
+
+        // A trailing no-arg call carries no meaning — the name lives in what it was called ON.
+        // `customer.SqlParam()` must yield @p001_Customer, not @p001_AsParam__: without this, EVERY
+        // string parameter in a command is called SqlParam__ and they collide into SqlParam___2,
+        // SqlParam___3, … Names that identify nothing, in every debug dump and every error message.
+        // (Only empty parens: `Sql.Text(customer)` keeps its argument, which is where its name is.)
+        if (rawSegments.Length > 1 && rawSegments[^1].EndsWith("()", StringComparison.Ordinal))
+            rawSegments = rawSegments[..^1];
 
         var segments = new (string Sanitized, bool IsFunctionCall)[rawSegments.Length];
         for (var i = 0; i < rawSegments.Length; i++)

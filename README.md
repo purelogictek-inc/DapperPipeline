@@ -13,7 +13,7 @@ in an interpolation hole has nothing to bind to, and **the code does not build**
 
 ```csharp
 // ✅ Compiles. Auto-parameterized — never concatenated.
-builder.Append($"WHERE Id = {orderId} AND Status = {Sql.Text(status)}");
+builder.Append($"WHERE Id = {orderId} AND Status = {status.SqlParam()}");
 //  emits:  WHERE Id = @p001_OrderId AND Status = @p001_Status
 //  bound:  @p001_OrderId = 4711, @p001_Status = "shipped"
 ```
@@ -34,13 +34,34 @@ past, and cannot be reintroduced by someone in a hurry at 5pm.
 > bad one must fail. If that ever stopped being true, the tests break. See
 > [`ReadmeCompilationTests`](tests/DapperPipeline.Tests/Documentation/ReadmeCompilationTests.cs).
 
-When you genuinely need a runtime string, you say so, in the open:
+### Why a string, and only a string, has to say what it is
+
+`int`, `Guid`, `DateTime`, and any `ISqlBindable` go straight into a hole — there is nothing to ask,
+because **none of them could ever be a table name**. A string could be either:
+
+<!-- readme-test: expect-error -->
+```csharp
+builder.Append($"WHERE Name = {status}");   // a value?
+builder.Append($"ORDER BY {status}");       // ...or a column name?
+```
+
+Same type, opposite meanings, and getting it wrong is how injections happen. So the compiler makes you
+answer — and both answers are one keystroke away in IntelliSense, the moment you type `status.`:
 
 | Need | Write | Result |
 |---|---|---|
-| A string **value** | `Sql.Text(name)` | bound as a parameter |
-| A table/column **identifier** | `Sql.Identifier(table)` | validated against `[A-Za-z_][A-Za-z0-9_]*`, emitted raw |
+| A string **value** | `name.SqlParam()` | bound as a parameter — **this is what you want, almost always** |
+| A table/column **name** | `table.SqlIdentifier()` | validated against `[A-Za-z_][A-Za-z0-9_]*`, then emitted raw |
 | Genuinely raw SQL | `builder.AppendRaw(sql)` | verbatim — explicit, greppable, reviewable |
+
+`Sql.Identifier(x)` is the same identifier door spelled as a static call. (`Sql.Text(x)` was the old
+name for `.SqlParam()` — it still works, but it is deprecated: *Text* describes the input, which you
+already knew, where *SqlParam* describes what happens to it.)
+
+The identifier door is validated, not raw: a payload like `name'; DROP TABLE orders--` **throws** at the
+boundary, before any SQL is built. That is why it is safe to have it sit next to the value door in
+autocomplete — the alternative is a developer who needs a dynamic column name reaching for `AppendRaw`,
+which validates nothing at all.
 
 [Full rules → ](#compile-time-sql-injection-prevention)
 
@@ -247,12 +268,12 @@ builder.Append($"WHERE Name = '{userInput}'");
 | Primitives (`int`, `long`, `bool`, `Guid`, `DateTime`, `DateTimeOffset`, `decimal`, etc.) | Auto-bound as `@p{NNN}_{Name}` where `{Name}` is derived from the caller expression |
 | `ISqlBindable` (consumer's typed wrappers) | Auto-bound, same naming as primitives |
 | `ISqlIdentifier` (consumer's typed identifier wrappers, e.g., `TableName`) | Emitted as raw SQL identifier |
-| `SqlIdentifier` (from `Sql.Identifier(string)`) | Validates the string, emits raw |
+| `SqlIdentifier` (from `x.SqlIdentifier()` / `Sql.Identifier(x)`) | Validates the string, emits raw |
 | `BoundParam<T>` (returned from `state.Bound<T>(name)`) | Emits the registered name (`@MyName`) directly |
-| `SqlText` (from `Sql.Text(string)`) | Binds the string as a **parameter** — the safe door for string *values* |
-| **bare `string`** | **Compile error** — use `Sql.Text(...)` for a value, or `Sql.Identifier(...)` for an identifier |
+| `SqlText` (from `x.SqlParam()`) | Binds the string as a **parameter** — the safe door for string *values* |
+| **bare `string`** | **Compile error** — use `x.SqlParam()` for a value, or `x.SqlIdentifier()` for a name |
 
-### Identifier position — `Sql.Identifier(...)`
+### Identifier position — `x.SqlIdentifier()`
 
 For SQL identifiers (table names, schemas) determined at runtime as a raw `string`:
 
@@ -401,7 +422,7 @@ public override void Build(IQueryBuilder builder, IPipelineState state)
     builder.Append($"""
         SELECT * FROM Orders
         WHERE BranchId = {s.BranchId}        -- value-dedup resolves to @UserSessionBranchId
-          AND CreatedBy = {Text(s.UserId)}     -- value-dedup resolves to @UserSessionUserId
+          AND CreatedBy = {s.UserId.SqlParam()}     -- value-dedup resolves to @UserSessionUserId
         """);
 }
 ```
@@ -513,7 +534,7 @@ public override void Build(IQueryBuilder builder, IPipelineState state)
     if (filter.OnlyPending)
         builder.Append($"SELECT * FROM Orders WHERE Status = 'pending'");
     else
-        builder.Append($"SELECT * FROM Orders WHERE Status = {Text(status)}");
+        builder.Append($"SELECT * FROM Orders WHERE Status = {status.SqlParam()}");
 }
 ```
 
@@ -529,7 +550,7 @@ stays fully parameterized:
 // Instead of: IF NOT EXISTS (...) INSERT ...
 builder.Append($"""
     INSERT INTO orders (id, status)
-    SELECT {orderId}, {Text(status)}
+    SELECT {orderId}, {status.SqlParam()}
     WHERE NOT EXISTS (SELECT 1 FROM orders WHERE id = {orderId})
     """);
 ```
@@ -548,7 +569,7 @@ as extension methods on `IQueryBuilder`:
 ```csharp
 builder.If("@Status = 'pending'",
     ifBlock   => ifBlock.Append($"SELECT * FROM PendingOrders"),
-    elseBlock => elseBlock.Append($"SELECT * FROM Orders WHERE Status = {Text(status)}"));
+    elseBlock => elseBlock.Append($"SELECT * FROM Orders WHERE Status = {status.SqlParam()}"));
 
 builder.If(d => d
     .Clause("@Status = 'pending'",  b => b.Append($"SELECT * FROM PendingOrders"))

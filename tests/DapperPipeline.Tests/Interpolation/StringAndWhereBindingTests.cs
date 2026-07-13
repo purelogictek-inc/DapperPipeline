@@ -33,7 +33,7 @@ public sealed class StringAndWhereBindingTests
         var qb = NewBuilder();
         var userName = "o'brien";   // an apostrophe would break naive concatenation outright
 
-        qb.Append($"SELECT * FROM Users WHERE Name = {Text(userName)}");
+        qb.Append($"SELECT * FROM Users WHERE Name = {userName.SqlParam()}");
 
         // The value must not appear in the SQL text at all.
         Assert.DoesNotContain("o'brien", qb.Sql);
@@ -47,7 +47,7 @@ public sealed class StringAndWhereBindingTests
         var qb = NewBuilder();
         var userName = "alice";
 
-        qb.Append($"WHERE Name = {Text(userName)}");
+        qb.Append($"WHERE Name = {userName.SqlParam()}");
 
         Assert.Contains(Params(qb).Keys, k => k.Contains("UserName", StringComparison.OrdinalIgnoreCase));
     }
@@ -58,7 +58,7 @@ public sealed class StringAndWhereBindingTests
         var qb = NewBuilder();
         string? missing = null;
 
-        qb.Append($"WHERE Name = {Text(missing)}");
+        qb.Append($"WHERE Name = {missing.SqlParam()}");
 
         // NULL and '' are different values in SQL; collapsing one into the other would be a silent bug.
         Assert.Null(Assert.Single(Params(qb)).Value);
@@ -86,7 +86,7 @@ public sealed class StringAndWhereBindingTests
         var qb = NewBuilder();
         var status = "pending";
 
-        var where = qb.Where(w => w.Append($"o.Status = {Text(status)}"));
+        var where = qb.Where(w => w.Append($"o.Status = {status.SqlParam()}"));
         qb.Append($"SELECT * FROM Orders o {where}");
 
         Assert.DoesNotContain("pending", qb.Sql);

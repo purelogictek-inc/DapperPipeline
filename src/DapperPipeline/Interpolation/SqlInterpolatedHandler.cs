@@ -134,9 +134,11 @@ public ref struct SqlInterpolatedHandler
 
     /// <summary>Never call this. It exists so a bare string fails to compile with a useful message.</summary>
     [Obsolete(
-        "A bare string cannot go in a SQL interpolation hole — it is ambiguous, and guessing wrong " +
-        "is how injections happen. Say which you mean:  Sql.Text(x) binds it as a VALUE (safe, " +
-        "parameterized).  Sql.Identifier(x) emits it as a table/column NAME (validated, raw).",
+        "A bare string cannot go in a SQL interpolation hole. Every other type binds automatically, " +
+        "but a string is ambiguous — it could be a value or a name, and guessing is how injections " +
+        "happen. Say which:  x.SqlParam() binds it as a VALUE (parameterized — this is what you want " +
+        "almost every time).  x.SqlIdentifier() emits it as a table/column NAME (validated against " +
+        "[A-Za-z_][A-Za-z0-9_]*, then raw).",
         error: true)]
     public void AppendFormatted(string value) => throw new NotSupportedException();
 

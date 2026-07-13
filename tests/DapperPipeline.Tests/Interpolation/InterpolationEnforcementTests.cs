@@ -49,14 +49,14 @@ public sealed class InterpolationEnforcementTests
     public void A_bare_string_in_a_SQL_hole_does_not_compile()
         => MustNotCompile(
             """builder.Append($"WHERE Name = {status}");""",
-            "CS0619", "Sql.Text(x)", "Sql.Identifier(x)");
+            "CS0619", "x.SqlParam()", "x.SqlIdentifier()");
 
     [Fact]
     public void A_quoted_bare_string_does_not_compile()
         // The classic injection shape. Still a bare string, so it still cannot be written.
         => MustNotCompile(
             """builder.Append($"WHERE Name = '{status}'");""",
-            "CS0619", "Sql.Text(x)");
+            "CS0619", "x.SqlParam()");
 
     [Fact]
     public void An_untyped_object_does_not_compile()
@@ -72,7 +72,7 @@ public sealed class InterpolationEnforcementTests
         // Building the string outside the hole doesn't help you — it's still a string in a hole.
         => MustNotCompile(
             """builder.Append($"WHERE Name = {status + "!"}");""",
-            "CS0619", "Sql.Text(x)");
+            "CS0619", "x.SqlParam()");
 
     // ── Where ───────────────────────────────────────────────────────────────────────────────────
 
@@ -84,12 +84,24 @@ public sealed class InterpolationEnforcementTests
             """
             var where = builder.Where(w => w.Append($"name = {status}"));
             """,
-            "CS0619", "Sql.Text(x)");
+            "CS0619", "x.SqlParam()");
 
     // ── The doors that ARE open, and must stay open ─────────────────────────────────────────────
 
     [Fact]
-    public void Sql_Text_compiles_and_is_the_safe_door_for_string_values()
+    public void SqlParam_compiles_and_is_the_discoverable_safe_door()
+        // The whole reason SqlParam exists: someone typing `{status.` is SHOWN the safe door by
+        // IntelliSense, instead of having to already know Sql.Text exists.
+        => Assert.Empty(Errors("""builder.Append($"WHERE Name = {status.SqlParam()}");"""));
+
+    [Fact]
+    public void SqlParam_works_in_a_WHERE_hole_too()
+        => Assert.Empty(Errors("""
+            var where = builder.Where(w => w.Append($"name = {status.SqlParam()}"));
+            """));
+
+    [Fact]
+    public void Sql_Text_compiles_and_is_the_same_thing_as_SqlParam()
         => Assert.Empty(Errors("""builder.Append($"WHERE Name = {Sql.Text(status)}");"""));
 
     [Fact]
