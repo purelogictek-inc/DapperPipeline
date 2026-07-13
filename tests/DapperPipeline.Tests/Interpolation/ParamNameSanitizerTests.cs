@@ -172,4 +172,38 @@ public sealed class ParamNameSanitizerTests
         var c = Candidates("...");
         Assert.Empty(c);
     }
+
+    // ----- Characters that are legal in C# but not in a SQL parameter name -----
+
+    [Theory]
+    [InlineData("\"created_at\"", "Created_at")]   // a string LITERAL — the quotes came along too
+    [InlineData("\"abc\"",        "Abc")]
+    [InlineData("items[0]",       "Items0")]       // indexer brackets
+    [InlineData("a + b",          "Ab")]           // operators and spaces
+    public void SourceCharactersIllegalInSqlAreStripped(string callerExpr, string expected)
+    {
+        // The caller expression is SOURCE CODE, and source code contains characters SQL rejects in an
+        // identifier. `"created_at".SqlParam()` used to produce the parameter name @p000_"created_at"
+        // — quotes included — which is not a valid parameter name and fails at the engine.
+        var c = Candidates(callerExpr);
+
+        Assert.NotEmpty(c);
+        Assert.Equal(expected, c[0]);
+        Assert.DoesNotContain(c[0], ch => !char.IsAsciiLetterOrDigit(ch) && ch != '_');
+    }
+
+    [Fact]
+    public void EveryCandidateIsAlwaysAValidSqlParameterName()
+    {
+        // The property that actually matters, over every shape we know how to produce.
+        string[] exprs =
+        [
+            "customerId", "_session.BranchId", "GetUser(id).Name", "\"literal\"", "items[0]",
+            "a + b", "dto.Value", "x.SqlParam()", "Sql.Text(customer)", "obj.Method(\"arg\")",
+        ];
+
+        foreach (var e in exprs)
+            foreach (var name in ParamNameSanitizer.GenerateCandidates(e))
+                Assert.DoesNotContain(name, ch => !char.IsAsciiLetterOrDigit(ch) && ch != '_');
+    }
 }

@@ -74,9 +74,7 @@ internal static partial class ParamNameSanitizer
         {
             var raw = rawSegments[i];
             var hasParens = raw.Contains('(') || raw.Contains(')');
-            var sanitized = raw.Replace('(', '_').Replace(')', '_');
-            sanitized = PascalCase(sanitized);
-            segments[i] = (sanitized, hasParens);
+            segments[i] = (PascalCase(SanitizeSegment(raw)), hasParens);
         }
 
         var seen = new HashSet<string>();
@@ -105,6 +103,29 @@ internal static partial class ParamNameSanitizer
 
         // Tier 3 reserved for future transformation; currently identical to tier 2
         // (would be deduplicated by the seen set if added)
+    }
+
+    /// <summary>
+    /// Reduces one segment to characters that are legal in a SQL parameter name.
+    /// </summary>
+    /// <remarks>
+    /// The caller expression is <em>source code</em>, and source code contains characters SQL will
+    /// not accept in an identifier. Binding a literal — <c>"created_at".SqlParam()</c> — captures the
+    /// quotes too, and the name came out as <c>@p000_"created_at"</c>: quotes and all, which is not a
+    /// valid parameter name and blows up at the engine. Anything outside <c>[A-Za-z0-9_]</c> is now
+    /// dropped, except parentheses, which become <c>_</c> so <c>GetUser(id).Name</c> keeps reading as
+    /// <c>GetUser_id_Name</c>.
+    /// </remarks>
+    private static string SanitizeSegment(string raw)
+    {
+        var sb = new System.Text.StringBuilder(raw.Length);
+        foreach (var ch in raw)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch == '_') sb.Append(ch);
+            else if (ch is '(' or ')') sb.Append('_');
+            // everything else — quotes, spaces, operators, brackets — is not a name; drop it
+        }
+        return sb.ToString();
     }
 
     private static string PascalCase(string segment)
