@@ -31,7 +31,7 @@ internal sealed class DapperPipeline(
     private readonly PipelineState _state = new();
     private readonly List<(string Name, IQueryCommand Command)> _commands = [];
     private readonly List<string> _skippedCommands = [];
-    private int _scopeIndex;
+    private int _scopeIndex = 1;   // 1-based: command #1 is @p001_*
 
     // null = "nobody said" — resolved from the dialect at run time. Explicit beats dialect.
     private bool? _useTransaction;
@@ -211,7 +211,7 @@ internal sealed class DapperPipeline(
             processor.CaughtError = false;
             _commands.Clear();
             _skippedCommands.Clear();
-            _scopeIndex = 0;
+            _scopeIndex = 1;
             _context.Clear();
         }
 

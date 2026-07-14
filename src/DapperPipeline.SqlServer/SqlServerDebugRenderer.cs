@@ -76,7 +76,13 @@ internal sealed class SqlServerDebugRenderer : ISqlDebugRenderer
     private static string ParamToDebug(KeyValuePair<string, object?> kvp)
     {
         var val = kvp.Value;
-        var key = kvp.Key;
+
+        // The key already carries its '@' — parameters are registered as "@p000_OrderId". Every
+        // template below adds one, so the preamble came out as `DECLARE @@p000_OrderId`. In T-SQL
+        // `@@` is the SYSTEM-variable prefix (@@ROWCOUNT), so the declaration was not merely ugly:
+        // it was invalid, and it declared a name the query body never referenced. The whole point of
+        // ToDebug is that you can paste it into SSMS and run it, and you could not.
+        var key = kvp.Key.TrimStart('@');
 
         if (val == null)
             return $"DECLARE @{key} AS nvarchar(max)\r\nSET @{key} = NULL\r\n";

@@ -34,8 +34,8 @@ public sealed class StringSqlExtensionsTests
         var (sql, ps) = Build(b => b.Append($"WHERE Name = {attack.SqlParam()}"));
 
         Assert.DoesNotContain("DROP TABLE", sql);          // it is a parameter, not text
-        Assert.Contains("WHERE Name = @p000_Attack", sql);
-        Assert.Equal(attack, ps["@p000_Attack"]);          // the payload survives intact — as DATA
+        Assert.Contains("WHERE Name = @p001_Attack", sql);
+        Assert.Equal(attack, ps["@p001_Attack"]);          // the payload survives intact — as DATA
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class StringSqlExtensionsTests
         // Same type, same binding, same SQL. SqlParam is a spelling, not a second mechanism —
         // one code path means one thing to get wrong.
         Assert.Equal(viaSqlText.Sql, viaExtension.Sql);
-        Assert.Equal(viaSqlText.Params["@p000_Customer"], viaExtension.Params["@p000_Customer"]);
+        Assert.Equal(viaSqlText.Params["@p001_Customer"], viaExtension.Params["@p001_Customer"]);
     }
 
     [Fact]
@@ -63,8 +63,8 @@ public sealed class StringSqlExtensionsTests
 
         var (sql, ps) = Build(b => b.Append($"WHERE Name = {missing.SqlParam()}"));
 
-        Assert.Contains("@p000_Missing", sql);
-        Assert.Null(ps["@p000_Missing"]);
+        Assert.Contains("@p001_Missing", sql);
+        Assert.Null(ps["@p001_Missing"]);
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public sealed class StringSqlExtensionsTests
             b.Append($"SELECT * FROM orders o {where}");
         });
 
-        Assert.Contains("o.status = @p000_Status", sql);
-        Assert.Equal(status, ps["@p000_Status"]);
+        Assert.Contains("o.status = @p001_Status", sql);
+        Assert.Equal(status, ps["@p001_Status"]);
     }
 
     [Fact]

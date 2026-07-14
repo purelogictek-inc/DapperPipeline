@@ -27,7 +27,10 @@ internal sealed partial class QueryBuilder(
     // Keyed by parameter value (using the value's own Equals); value is the parameter name (with @ prefix).
     private readonly Dictionary<object, string> _valueIndex = new(new ValueEqualityComparer());
 
-    private int _scopeIndex;
+    // 1-based. The first command's parameters are @p001_*, which is what the docs have always
+    // promised and what a human expects to read. It was 0-based, so command #1 emitted @p000_* and
+    // every example in the README was quietly describing command #2.
+    private int _scopeIndex = 1;
 
     // -------------------------------------------------------------------------
     // Pipeline lifecycle (called by DapperPipeline, not by commands)
