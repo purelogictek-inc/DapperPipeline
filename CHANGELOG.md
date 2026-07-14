@@ -3,6 +3,80 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## 1.9.0
+
+### ✨ New — the two doors a string can take into SQL, now discoverable
+
+A string is the only type in an interpolation hole that has to say what it is. `int`, `Guid`,
+`DateTime` and any `ISqlBindable` bind automatically — none of them could ever be a table name. A
+string could be **either**, and guessing is how injections happen:
+
+```csharp
+builder.Append($"WHERE Name = {customer.SqlParam()}");      // a VALUE → bound parameter
+builder.Append($"ORDER BY {sortColumn.SqlIdentifier()}");   // a NAME  → validated, then raw
+```
+
+Both are extension methods in `DapperPipeline.Abstractions` — the namespace a command file already
+imports — so they appear in IntelliSense the moment you type `customer.`, with **no new `using`**.
+Previously you had to already know `Sql.Text` existed.
+
+`SqlIdentifier` is validated against `[A-Za-z_][A-Za-z0-9_]*` and **throws** on quotes, spaces,
+semicolons and dots, so a payload dies at the boundary before any SQL is built. It is exposed on
+purpose: hiding the identifier door does not stop someone who needs a dynamic column name — it pushes
+them to `AppendRaw`, which validates *nothing*.
+
+Why you need it at all: **an identifier cannot be parameterized.** `ORDER BY @p001_SortCol` orders by
+a *constant* — it silently does not sort, with no error. A name must be SQL text; a value must be a
+parameter; the compiler makes you say which.
+
+### ⚠️ Deprecated — `Sql.Text(x)`
+
+Use `x.SqlParam()`. Identical behaviour, same type, same parameter name. *Text* describes the input,
+which you already knew; *SqlParam* describes what happens to it. Warning-level; removed in 2.0.
+`Sql.Identifier(x)` is **not** deprecated — that name was never wrong.
+
+### 🐞 Fixed — `ToDebug()` on SQL Server produced a script SSMS rejects
+
+It emitted a doubled `@`:
+
+```sql
+DECLARE @@p001_OrderId AS bigint          -- invalid: @@ is T-SQL's SYSTEM-variable prefix
+SET     @@p001_OrderId = 7
+SELECT ... WHERE id = @p001_OrderId       -- and the body used a single @, so they never matched
+```
+
+Pasting it into SSMS — the only thing the feature exists for — failed immediately. Now the `DECLARE`
+/`SET` preamble uses the same names as the query body, and the whole script runs.
+
+### 🐞 Fixed — parameter names could contain characters SQL rejects
+
+A caller expression is *source code*. Binding a literal carried its quotes into the name:
+
+```
+"created_at".SqlParam()   →   @p001_"created_at"     ← not a valid parameter name; fails at the engine
+```
+
+Present in 1.8.0 via `Sql.Text("literal")`. Anything outside `[A-Za-z0-9_]` is now dropped.
+
+### 🐞 Fixed — parameter scopes are now 1-based
+
+The first command emitted `@p000_*`, while every example in the docs said `@p001_*` — so the
+documentation was quietly describing command #2. The first command now emits `@p001_*`, as advertised.
+
+### 🐞 Fixed — parameter names no longer collide on the wrapper
+
+`[CallerArgumentExpression]` captures the whole expression, so a wrapped bind was named after the
+*wrapper* rather than the variable: every string parameter in a command came out as `@p001_SqlParam__`,
+colliding into `SqlParam___2`, `SqlParam___3` — names that identify nothing in a debug dump. Both
+`customer.SqlParam()` and `Sql.Text(customer)` now yield `@p001_Customer`.
+
+### ⚠️ Upgrade note — generated parameter names change
+
+Three of the fixes above change the **names** of generated parameters. They are generated, not API,
+and nothing in your code should reference them — but if you hardcoded one in an `AppendRaw`, or
+snapshot-tested generated SQL, you will see a diff. Nothing else changes: no breaking API, no
+behaviour change to queries.
+
 ## 1.8.0
 
 ### ⚠️ Behaviour change — PostgreSQL no longer opens a transaction by default
