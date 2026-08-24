@@ -3,7 +3,17 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
-## Unreleased
+## 1.10.0
+
+Three ways a pipeline could lose or cross your results without telling you — all found while
+investigating one intermittent test failure reported from the field, all now loud. **If you use
+`RetryCount`, or batch more than one command per run, this is a recommended upgrade.**
+
+> **Upgrade note — new exceptions on previously "successful" runs.** Two checks in this release
+> throw where earlier versions returned silently. Both indicate a real defect that was already
+> corrupting or dropping your results, so the exception is the fix rather than a regression — but
+> a run that appeared green may now fail, and the message names what to correct. See the batch
+> alignment entry for the one limitation.
 
 ### 📌 Documented — state persists across sequential runs on one pipeline instance
 
