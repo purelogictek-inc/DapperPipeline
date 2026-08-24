@@ -25,4 +25,22 @@ public interface IDapperPipelineContext
     /// Defaults to <c>0</c> (no retries).
     /// </summary>
     int RetryCount { set; }
+
+    /// <summary>
+    /// Whether to emit and verify per-command alignment markers on batches that read results.
+    /// Defaults to <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Costs one constant <c>SELECT</c> per reading command, on the round trip the batch was
+    /// already making. In exchange the pipeline refuses to hand a command's readers a result set
+    /// that belongs to a different command — the failure that otherwise returns another command's
+    /// rows silently whenever the shapes happen to be compatible.
+    /// </para>
+    /// <para>
+    /// Turn it off only with a measurement in hand. Batches that register no readers never emit
+    /// markers, so write-only paths are unaffected either way.
+    /// </para>
+    /// </remarks>
+    bool VerifyAlignment { set; }
 }

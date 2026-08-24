@@ -9,9 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace DapperPipeline.Tests.Pipeline;
 
 /// <summary>
-/// Readers are kept grouped by the command that registered them, so a failure names that command
-/// instead of leaving the caller to recognise column names in a Dapper error. This is the
-/// diagnostic half of the alignment work — no API change, no extra SQL.
+/// Readers are grouped by the command that registered them, and each reading command emits an
+/// alignment marker the pipeline reads back before dispatching the next command. Together those
+/// mean a failure names the command at fault — the <em>culprit</em>, not the victim it would
+/// otherwise have corrupted.
 /// </summary>
 public sealed class ReaderAttributionTests : IDisposable
 {
@@ -58,7 +59,7 @@ public sealed class ReaderAttributionTests : IDisposable
         }
     }
 
-    /// <summary>Emits an extra result set whose shape no later reader can materialize.</summary>
+    /// <summary>Emits an extra result set its own single reader will not consume.</summary>
     private interface INoisyCommand : IQueryCommand;
 
     private sealed class NoisyCommand : BaseQueryCommand, INoisyCommand
@@ -71,6 +72,18 @@ public sealed class ReaderAttributionTests : IDisposable
 
         public override void Process(IDapperResultProcessor processor) =>
             processor.Read<string>(_ => { });
+    }
+
+    /// <summary>Aligned, but its reader's type does not match its own columns.</summary>
+    private interface IWrongTypeCommand : IQueryCommand;
+
+    private sealed class WrongTypeCommand : BaseQueryCommand, IWrongTypeCommand
+    {
+        public override void Build(IQueryBuilder builder, IPipelineState state) =>
+            builder.Append($"SELECT platform, bench FROM slots");
+
+        public override void Process(IDapperResultProcessor processor) =>
+            processor.Read<ScoringWeight>(_ => { });
     }
 
     private interface IWeightsCommand : IQueryCommand<IReadOnlyList<ScoringWeight>>;
@@ -102,30 +115,50 @@ public sealed class ReaderAttributionTests : IDisposable
         services.AddDapperPipeline(new SqliteDialect(ConnectionString));
         services.AddTransient<IGreedyCommand, GreedyCommand>();
         services.AddTransient<INoisyCommand, NoisyCommand>();
+        services.AddTransient<IWrongTypeCommand, WrongTypeCommand>();
         services.AddTransient<IWeightsCommand, WeightsCommand>();
         services.AddTransient<IDomainErrorCommand, DomainErrorCommand>();
         return services.BuildServiceProvider().GetRequiredService<IDapperPipeline>();
     }
 
     [Fact]
-    public async Task A_failing_reader_names_its_command_and_position_in_the_batch()
+    public async Task An_over_producing_command_is_blamed_and_the_next_command_never_runs()
     {
+        IReadOnlyList<ScoringWeight>? weights = null;
+
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
                 .ResolveAndRegister<INoisyCommand>()
-                .ResolveAndRegister<IWeightsCommand>(c => c.OnResult(_ => { }))
+                .ResolveAndRegister<IWeightsCommand>(c => c.OnResult(w => weights = w))
                 .RunAsync(CancellationToken.None));
 
-        // The blame that used to require reading column names out of a Dapper stack trace.
-        Assert.Contains(nameof(WeightsCommand), ex.Message);
-        Assert.Contains("command 2 of the batch", ex.Message);
-        Assert.Contains("Reader 1 of 1", ex.Message);
-        // The underlying Dapper failure is preserved, not swallowed.
-        Assert.NotNull(ex.InnerException);
+        // The CULPRIT is named — not WeightsCommand, which is merely who used to receive the
+        // damage. That inversion is the whole point of verifying at the boundary.
+        Assert.Contains(nameof(NoisyCommand), ex.Message);
+        Assert.Contains("command 1 of the batch", ex.Message);
+        Assert.DoesNotContain(nameof(WeightsCommand), ex.Message);
+
+        // And prevention, not detection: the victim's reader was never dispatched.
+        Assert.Null(weights);
     }
 
     [Fact]
-    public async Task A_starved_reader_names_the_command_that_ran_out_of_result_sets()
+    public async Task A_reader_that_fails_on_its_own_result_set_names_its_command_and_position()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            BuildPipeline()
+                .ResolveAndRegister<IGreedyCommand>(c => c.Readers = 1)
+                .ResolveAndRegister<IWrongTypeCommand>()
+                .RunAsync(CancellationToken.None));
+
+        Assert.Contains(nameof(WrongTypeCommand), ex.Message);
+        Assert.Contains("command 2 of the batch", ex.Message);
+        Assert.Contains("Reader 1 of 1", ex.Message);
+        Assert.NotNull(ex.InnerException);   // the underlying Dapper failure is preserved
+    }
+
+    [Fact]
+    public async Task An_under_producing_command_is_blamed_by_name()
     {
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
@@ -134,7 +167,6 @@ public sealed class ReaderAttributionTests : IDisposable
 
         Assert.Contains(nameof(GreedyCommand), ex.Message);
         Assert.Contains("command 1 of the batch", ex.Message);
-        Assert.Contains("reader 2 of 3", ex.Message);
     }
 
     [Fact]

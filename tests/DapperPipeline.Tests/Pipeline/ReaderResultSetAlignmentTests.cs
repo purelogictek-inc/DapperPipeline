@@ -127,19 +127,18 @@ public sealed class ReaderResultSetAlignmentTests : IDisposable
     }
 
     [Fact]
-    public async Task One_extra_result_set_shifts_every_later_reader_onto_the_wrong_result_set()
+    public async Task An_extra_result_set_is_caught_at_its_own_command_before_the_next_reader_runs()
     {
         var (_, weights, error) = await RunAsync(resultSets: 2);
 
-        // The weights reader is handed the slots command's SECOND result set (platform, bench) —
-        // the report's run 2, reproduced with one instance on one thread. Materialization happens
-        // to fail here because the shapes are incompatible; when they are compatible, the caller
-        // silently receives another command's rows, which is the outcome worth preventing.
+        // Before alignment markers this shifted: the weights reader was handed the slots command's
+        // SECOND result set (platform, bench) and blew up on materialization — the report's run 2,
+        // with the blame landing on the victim. Now the slots command's marker is read first, the
+        // mismatch is caught there, and the weights reader is never dispatched.
         Assert.NotNull(error);
+        Assert.Contains(nameof(SlotCommand), error!.Message);
+        Assert.Contains("command 1 of the batch", error.Message);
         Assert.Null(weights);
-        // Name the columns it was actually handed: platform/bench belong to the OTHER command.
-        Assert.Contains("platform", error!.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("bench", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -150,10 +149,12 @@ public sealed class ReaderResultSetAlignmentTests : IDisposable
         // Materialization SUCCEEDS here — the shapes agree — so before the alignment check this
         // returned the slots command's single rushing_tds row as if it were the weights result,
         // with no exception anywhere. That silent data-crossing is the outcome worth preventing.
+        // Materialization would SUCCEED here — the shapes agree — so before this check the slots
+        // command's single rushing_tds row was delivered as if it were the weights result, with no
+        // exception anywhere. The marker never matches a command's own rows, so the compatible
+        // case is now caught exactly like the incompatible one.
         Assert.NotNull(error);
-        Assert.Contains("more result sets", error!.Message);
-        Assert.True(
-            weights is null || weights.Count != 2,
-            "precondition: the wrong rows must actually have been delivered, else this proves nothing");
+        Assert.Contains(nameof(SlotCommand), error!.Message);
+        Assert.Null(weights);
     }
 }

@@ -224,7 +224,21 @@ internal sealed class DapperPipeline(
             // leaving a flat list that could only ever be paired by position.
             var commandReaders = processor.Readers;
             if (commandReaders.Count > 0)
-                readerGroups.Add(new CommandReaders(name, scopeIndex, commandReaders));
+            {
+                // Emit this command's alignment marker immediately after its SQL — the one moment
+                // the command's statements are known to have just ended. Only commands that read
+                // get one: a write-only batch emits no markers at all and keeps the cheaper
+                // ExecuteAsync path untouched.
+                string? marker = null;
+                if (_context.VerifyAlignment)
+                {
+                    marker = $"dpm_{scopeIndex:D3}";
+                    queryBuilder.EnsureStatementSeparator(dialect.StatementSeparator);
+                    queryBuilder.AppendRaw(dialect.RenderAlignmentMarker(marker));
+                }
+
+                readerGroups.Add(new CommandReaders(name, scopeIndex, commandReaders, marker));
+            }
         }
 
         // 4. Drop unused parameters
@@ -319,6 +333,49 @@ internal sealed class DapperPipeline(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Consumes the result set that must hold <paramref name="group"/>'s alignment token, and
+    /// throws if it holds anything else — which means that command produced a different number of
+    /// result sets than it registered readers, and everything after it has shifted.
+    /// </summary>
+    private static void VerifyMarker(CommandReaders group, SqlMapper.GridReader gr)
+    {
+        if (group.Marker is null) return;   // verification switched off for this run
+
+        if (gr.IsConsumed)
+            throw new InvalidOperationException(
+                $"Command '{group.Name}' (command {group.ScopeIndex} of the batch) consumed all " +
+                $"{group.Readers.Count} of its result set(s) but the batch ended before its " +
+                $"alignment marker, so it produced fewer row-returning statements than it " +
+                $"registered readers.");
+
+        string? token;
+        try
+        {
+            token = gr.Read<string>(buffered: true).FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            // The position that should hold a one-column token holds something else entirely.
+            throw new InvalidOperationException(
+                $"Command '{group.Name}' (command {group.ScopeIndex} of the batch) left an " +
+                $"unread result set where its alignment marker should be, so it produced more " +
+                $"row-returning statements than its {group.Readers.Count} registered reader(s). " +
+                $"Without this check those extra rows would have been handed to the next " +
+                $"command's reader.", ex);
+        }
+
+        if (token != group.Marker)
+            throw new InvalidOperationException(
+                $"Command '{group.Name}' (command {group.ScopeIndex} of the batch) is misaligned " +
+                $"with the batch's result sets: expected its alignment marker '{group.Marker}' " +
+                $"after its {group.Readers.Count} reader(s), found " +
+                $"{(token is null ? "an empty result set" : $"'{token}'")}. A command must emit " +
+                $"exactly as many row-returning statements as its Process registers readers — " +
+                $"check any statement that returns rows only conditionally. The next command's " +
+                $"readers were not dispatched, so no results have been crossed.");
+    }
 
     /// <summary>
     /// Runs one reader and, if it fails, says whose it was. Before grouping, a mid-batch reader
@@ -492,6 +549,12 @@ internal sealed class DapperPipeline(
                 }
 
                 if (starvedCommand != null) break;
+
+                // This command's marker must be the very next result set. Verifying it HERE — before
+                // the next command's readers are dispatched — is what turns detection into
+                // prevention: a command that over-produced is caught while its leftovers are still
+                // unread, so they never reach the next command's handler.
+                VerifyMarker(group, gr);
             }
 
             if (starvedCommand != null)
@@ -540,10 +603,14 @@ internal sealed class DapperPipeline(
 /// <param name="ScopeIndex">1-based position among the batch's included commands — the same
 /// number that prefixes its parameters (<c>@p003_*</c>), so the message and the SQL agree.</param>
 /// <param name="Readers">The readers this command's <c>Process</c> registered, in order.</param>
+/// <param name="Marker">The alignment token emitted after this command's SQL, or <c>null</c> when
+/// verification is switched off. Reading it back is how the pipeline confirms this command consumed
+/// exactly its own result sets before the next command's readers are dispatched.</param>
 internal sealed record CommandReaders(
     string Name,
     int ScopeIndex,
-    IReadOnlyList<Action<SqlMapper.GridReader>> Readers);
+    IReadOnlyList<Action<SqlMapper.GridReader>> Readers,
+    string? Marker);
 
 /// <summary>
 /// Internal marker used for pre-run result-binding validation.
