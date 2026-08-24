@@ -5,6 +5,14 @@ Notable changes to DapperPipeline. Versions are the NuGet package versions
 
 ## Unreleased
 
+### 📌 Documented — state persists across sequential runs on one pipeline instance
+
+`SetState` POCOs and `Bind`ed scalars were already per-instance and already survived across
+sequential `RunAsync` calls (`RunAsync` resets commands, SQL, and context — not state). That was
+true but written nowhere, so nobody could safely build a multi-run handler on it. It is now a
+documented contract on `SetState`/`Bind` and pinned by `StatePersistenceAcrossRunsTests`,
+including the boundary: a fresh resolution starts empty, nothing leaks between instances.
+
 ### 🐞 Fixed — a misaligned batch handed one command's rows to another command, silently
 
 Result readers are paired to result sets **positionally across the whole batch**, which silently

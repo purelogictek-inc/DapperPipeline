@@ -67,12 +67,23 @@ public interface IDapperPipeline
     /// retrievable via <c>state.Require&lt;T&gt;()</c>; its scalar properties are also
     /// auto-bound under names of the form <c>@TypeNamePropertyName</c> for use in SQL.
     /// </summary>
+    /// <remarks>
+    /// State and bindings are <strong>per instance and survive across sequential
+    /// <c>RunAsync</c> calls</strong> — <c>RunAsync</c> resets commands, SQL, and context, but not
+    /// these. A handler that runs several batches sets its ambient context once at the top and
+    /// every run reads it. A fresh resolution starts empty; nothing leaks between instances.
+    /// This is contract, pinned by <c>StatePersistenceAcrossRunsTests</c>.
+    /// </remarks>
     IDapperPipeline SetState<T>(T value) where T : class;
 
     /// <summary>
     /// Pre-binds an ad-hoc named scalar at pipeline scope. The value is retrievable via
     /// <c>state.Bound&lt;T&gt;(name)</c> for direct interpolation as <c>@{name}</c>.
     /// </summary>
+    /// <remarks>
+    /// Like <see cref="SetState{T}"/>, bindings survive across sequential <c>RunAsync</c> calls
+    /// on the same instance — bind once, run many times.
+    /// </remarks>
     IDapperPipeline Bind<T>(string name, T value);
 
     // -------------------------------------------------------------------------
