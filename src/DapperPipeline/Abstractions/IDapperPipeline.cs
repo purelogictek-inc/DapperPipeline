@@ -22,6 +22,28 @@ namespace DapperPipeline.Abstractions;
 /// fixture and hand it to parallel callers; concurrent use throws
 /// <see cref="InvalidOperationException"/>.
 /// </para>
+/// <para>
+/// <strong>Never cache a <see cref="Task"/> produced by a pipeline operation.</strong> This is the
+/// same rule wearing a disguise, and it is easy to break without noticing: memoising
+/// <c>Task&lt;T&gt;</c> caches the <em>operation</em>, not its result, and that operation is bound
+/// to the one pipeline instance the caller who started it was using. Everyone who later reads the
+/// cache is sharing that caller's in-flight run. The trap has no <c>async void</c> and no missing
+/// <c>await</c> for an analyzer to flag:
+/// <code>
+/// // WRONG — the cached Task is an operation bound to one caller's pipeline.
+/// static readonly ConcurrentDictionary&lt;long, Task&lt;IReadOnlyList&lt;Row&gt;&gt;&gt; Cache = new();
+/// var rows = await Cache.GetOrAdd(id, _ =&gt; LoadAsync(id, pipeline));
+///
+/// // RIGHT — cache the value; each caller's load runs on its own pipeline.
+/// if (!Cache.TryGetValue(id, out var rows))
+///     Cache[id] = rows = await LoadAsync(id, pipeline);
+/// </code>
+/// <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/>
+/// makes it worse: it does not guarantee the factory runs once, and a factory result it discards
+/// under contention is a Task that is <em>already running</em> — an unawaited pipeline operation
+/// nobody wrote. If you must cache in-flight work to prevent a dogpile, give the loader its own
+/// pipeline rather than one borrowed from a request.
+/// </para>
 /// </remarks>
 public interface IDapperPipeline
 {

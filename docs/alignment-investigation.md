@@ -5,6 +5,10 @@ proposed was wrong. The mechanism *we* proposed in reply was also wrong. Chasing
 answer uncovered a real data-corruption path in this library that had nothing to do with their
 report, and fixing it properly took three layers across 1.10.0 and 1.11.0.
 
+The original failure was then diagnosed too (§7) — by an exception message we shipped before we
+understood the bug, after five hypotheses across two teams had died. It was a cached
+`Task` in *their* code, and the fix on our side is a paragraph of documentation.
+
 This document exists because the reasoning was more valuable than the outcome, and because most of
 it happened in correspondence that would otherwise be lost. It is written for whoever next has to
 touch `ExecCoreAsync` or argue about whether a safety check earns its cost.
@@ -220,36 +224,65 @@ about **3%** of what it saves. The cost appears exactly where the risk does and 
 
 ---
 
-## 7. Still open
+## 7. FF-90's actual cause — a cached `Task` is a shared operation
 
-**FF-90 itself is not diagnosed.** Every mechanism either side proposed is dead on the evidence:
+**Found by the downstream team on 2026-08-24, using the in-flight guard from 1.10.0.** Ten
+full-suite runs on 1.11.0 failed 3 of 10, and one capture named the misuse at the call site.
 
-- Their two handlers hold distinct pipeline instances (their correction, verified).
-- The package has no shared mutable state below them (our audit).
-- No command in their handler varies its result-set count (their audit of all ten builders).
-- Both exceptions match one instance used concurrently.
+They cached board rows in a `static ConcurrentDictionary<long, Task<IReadOnlyList<T>>>`, populated
+with `GetOrAdd(id, factory)`, where the factory closed over **the calling handler's pipeline**.
 
-The one hypothesis that fits all of the above is a **dropped `await` inside their handler** — twelve
-sequential calls on one instance, where one un-awaited call overlaps the next. The forms that compile
-silently are `_ = pipeline.RunAsync(...)`, a `Task`-returning helper whose result is dropped in a
-non-async caller, and — most likely — an `async` lambda passed to `OnResult`, which becomes
-**async void** because the parameter is `Action<T>`, so everything after its first `await` runs
-unowned.
+`ConcurrentDictionary.GetOrAdd` does not guarantee the factory runs once. Under contention it runs
+on several threads and keeps one result — and **a discarded factory result that is a `Task` is
+already running**. So:
 
-This is unconfirmed. The reporter weakly expects it to be none of the above. The in-flight guard
-shipped in 1.10.0 is the instrument: it throws synchronously at the second `RunAsync` entry, so the
-stack names the exact call site. If it never fires and the failure recurs, the mechanism is
-something nobody has identified yet.
+1. Two handlers race `GetOrAdd`; both factories run, each starting a `RunAsync` on *its own*
+   pipeline.
+2. One Task is stored; the other is orphaned, still executing, nobody awaiting it.
+3. The orphan's caller awaits the *stored* Task, which completes, and moves on to its next
+   pipeline call — **on the same instance its own orphan is still using.**
 
-**Known residual in the marker design.** A command registering more readers than it has result sets
-can have a `Read<string>` reader materialize the next marker's token as data before the run fails.
-It still fails loudly one step later, but that handler observes a garbage value first. Closing it
-would need a marker per *statement*, which requires the developer-declared boundaries that
-`AppendQuery` would have provided — a trade deliberately declined (§5).
+The one-line version, theirs: **the cache was meant to share a value and accidentally shares an
+operation.** An operation is bound to one caller's pipeline; a value is not.
 
----
+Every negative established over three days is *predicted* by this, which is what makes it
+convincing rather than merely possible:
 
-## 8. Things worth carrying forward
+| Established fact | Why this explains it |
+|---|---|
+| The two handlers hold **different** pipeline instances (`#13547109` / `#17987571`, threads 23 and 15) | Required, not merely tolerated — the orphan collides with **its own caller's** instance, never the other handler's. This is why our fork 1 was dead. |
+| Every `await` is present in their source | True and irrelevant. The discard happens inside `GetOrAdd`. |
+| Zero VSTHRD100/101/110 | Correct. No `async void`, no `_ =`. An analyzer cannot see a Task discarded inside a BCL method's contract. |
+| Intermittent, worse under load and in full-suite runs | `GetOrAdd` only double-invokes under contention. |
+| Both original exceptions | Re-entrant register during `RunAsync`'s `foreach` over `_commands` is "collection was modified"; interleaved readers on one instance is the crossed result set. |
+
+### What we changed in response
+
+- **Documented on `IDapperPipeline`**: never cache a `Task` produced by a pipeline operation, with
+  the wrong/right pair and an explicit note that `GetOrAdd` orphans already-running factory Tasks.
+  This is a consumer-facing hazard of *any* library whose operations bind to an instance, and
+  nothing in the API hinted against it.
+- **Named in the guard's message** as a third candidate on the different-thread branch, alongside
+  instance sharing and the dropped `await`.
+
+### Their fix, and a second-order hazard worth knowing
+
+`Lazy<Task<T>>` with `ExecutionAndPublication` makes the factory run exactly once. But note the
+residue they flagged: even then, the stored Task is bound to the **first** caller's pipeline and
+outlives that caller's scope, so later readers await an operation owned by a request that may
+already have finished. Caching the materialized **value** avoids both problems; if in-flight work
+must be cached to prevent a dogpile, the loader needs its own pipeline rather than one borrowed
+from a request.
+
+## 8. The residual in the marker design
+
+A command registering more readers than it has result sets can have a `Read<string>` reader
+materialize the next marker's token as data before the run fails. It still fails loudly one step
+later, but that handler observes a garbage value first. Closing it would need a marker per
+*statement*, which requires the developer-declared boundaries `AppendQuery` would have provided —
+a trade deliberately declined (§5).
+
+## 9. Things worth carrying forward
 
 - **A safety check whose cost scales with the thing it protects is easy to justify.** Markers cost
   per additional batched command, which is exactly per round-trip saved. That fixed ratio is a
@@ -261,3 +294,13 @@ would need a marker per *statement*, which requires the developer-declared bound
   that gap, because the difference is invisible until someone constructs it.
 - **A correction from downstream is worth more than agreement.** Two of the three fixes here exist
   because a reader pushed back with code instead of accepting a plausible narrative.
+- **Ship the guard before the diagnosis.** The root cause was found by an exception message, not by
+  reasoning — after five hypotheses across two teams had died. A check that names a misuse at its
+  call site is worth more than another round of thinking about it.
+- **A stack trace names the caller that lost a race, never the one holding it.** Our guard's message
+  originally asserted "on another thread", which it could not know, and that sent the reporting team
+  hunting a shared instance that did not exist. A diagnostic that guesses is worse than one that
+  enumerates.
+- **Distrust "every `await` is present."** It is a statement about source, and tasks can be discarded
+  by APIs you called rather than by code you wrote. `ConcurrentDictionary.GetOrAdd` is the example
+  that cost three days here.

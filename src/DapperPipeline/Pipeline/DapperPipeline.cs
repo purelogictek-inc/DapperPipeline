@@ -460,11 +460,14 @@ internal sealed class DapperPipeline(
               $"use — something reached by the run itself (a result callback, an IPipelineBehavior, " +
               $"an error mapper) is calling back into the pipeline that is still running. Give that " +
               $"path its own pipeline instance. "
-            : $"The in-flight run started on thread {owner}; this call is on thread {current}. That " +
-              $"is consistent with two flows sharing one instance, and also with one flow whose " +
-              $"earlier call was never awaited and is still running — the stack below shows only " +
-              $"the call that lost the race, not the one holding it. Compare the two callers' " +
-              $"pipeline instances before assuming which. ";
+            : $"The in-flight run started on thread {owner}; this call is on thread {current}. The " +
+              $"stack below shows only the call that lost the race, never the one holding it, so " +
+              $"compare the two callers' pipeline instances before concluding anything. Three " +
+              $"different mistakes look like this: two flows sharing one instance; one flow whose " +
+              $"earlier call was never awaited; or a Task produced by a pipeline operation being " +
+              $"cached or memoised — caching the operation instead of its result hands one caller's " +
+              $"in-flight run to everyone who reads the cache, and ConcurrentDictionary.GetOrAdd " +
+              $"orphans already-running factory Tasks under contention. ";
     }
 
     /// <summary>

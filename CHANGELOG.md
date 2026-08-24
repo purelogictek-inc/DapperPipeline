@@ -5,6 +5,22 @@ Notable changes to DapperPipeline. Versions are the NuGet package versions
 
 ## Unreleased
 
+### 📌 Documented — never cache a `Task` produced by a pipeline operation
+
+A pipeline instance is one logical operation at a time, and memoising a `Task<T>` breaks that rule
+in disguise: it caches the **operation**, not its result, and that operation is bound to whichever
+pipeline instance the caller who started it was using. Everyone who later reads the cache shares
+that caller's in-flight run.
+
+There is no `async void` and no missing `await` for an analyzer to see. `ConcurrentDictionary`'s
+`GetOrAdd` makes it sharper still — it does not guarantee the factory runs once, and a factory
+result it discards under contention is a Task that is **already running**: an unawaited pipeline
+operation nobody wrote.
+
+Now spelled out on `IDapperPipeline` with a wrong/right pair, and named by the concurrency guard as
+a candidate cause. Found the hard way by a team who hit it; the full account is in
+[docs/alignment-investigation.md](docs/alignment-investigation.md) §7.
+
 ### 🔎 Improved — the concurrency guard no longer guesses which misuse it caught
 
 The guard's message asserted the in-flight run was "on another thread". It could not know that: it

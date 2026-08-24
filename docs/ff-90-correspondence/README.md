@@ -16,6 +16,13 @@ The distilled version, and the one to read first, is
 | [5](ff-90-reply-5.md) | State-persistence contract pinned and documented | — |
 | [6](ff-90-reply-6.md) | Does batching *eliminate* FF-90 or shrink it? Elimination vs reduction | — |
 | [7](ff-90-reply-7.md) | 1.10.0 is live; `ShouldInclude` is alignment-safe; attribution coming | — |
+| [8](ff-90-reply-8.md) | Their callback-exception regression report: our bug, fixed not adapted to | 1.11.1 |
+| [9](ff-90-reply-9.md) | The guard fired — but the stack names the loser, not the holder | Guard message honesty; led to §7 |
+
+**Ending:** they found the root cause immediately after #9 — a `static ConcurrentDictionary` caching
+`Task<T>` produced from a pipeline operation, which shares the *operation* rather than its value.
+Written up in [`../alignment-investigation.md`](../alignment-investigation.md) §7. Our fix was a
+paragraph of documentation and one more candidate cause in the guard's message.
 
 Only our side of the exchange is here; their reports and audits are in their tracker under FF-90.
 
