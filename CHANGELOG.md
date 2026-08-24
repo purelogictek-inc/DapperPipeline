@@ -5,6 +5,31 @@ Notable changes to DapperPipeline. Versions are the NuGet package versions
 
 ## Unreleased
 
+### 🐞 Fixed — a misaligned batch handed one command's rows to another command, silently
+
+Result readers are paired to result sets **positionally across the whole batch**, which silently
+assumed every command yields exactly as many row-returning statements as its `Process` registers
+readers. When one command broke that assumption — most realistically a statement that returns rows
+only *conditionally*, so the count varies with the data — every later command's reader was shifted
+onto somebody else's result set.
+
+The failure has two faces. When the shapes disagree you get a Dapper materialization error naming
+columns that belong to a different query (confusing, but loud). **When the shapes happen to agree
+you get no error at all** — the caller receives another command's rows and proceeds. That is a data
+bug that surfaces months later, and it needed no concurrency and no shared state to happen: one
+pipeline instance, one thread.
+
+`RunAsync` now verifies reader/result-set alignment at the end of a batch and throws instead:
+readers left starved (fewer result sets than readers, so an `OnResult` never fired) and result sets
+left unconsumed (which is what shifts later readers) are both reported with the count and the
+likely cause. `ReaderResultSetAlignmentTests` pins all three cases, including the silent one.
+
+**Limitation, stated plainly:** the check compares *totals*, because nothing in the wire protocol
+marks which statement produced which result set. A batch whose per-command mismatches happen to
+cancel out — one command over by one, another under by one — still misaligns undetected. Totals
+disagreeing is the common case and is now caught; exact per-command attribution is not achievable
+without a protocol marker.
+
 ### 🐞 Fixed — a retried attempt silently skipped every `OnResult` callback
 
 `IDapperResultProcessor.Readers` is destructive — fetching it clears the scopes — and it was

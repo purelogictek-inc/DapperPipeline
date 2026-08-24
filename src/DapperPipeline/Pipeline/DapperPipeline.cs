@@ -432,6 +432,28 @@ internal sealed class DapperPipeline(
 
             while (!gr.IsConsumed && counter < count)
                 readers[counter++](gr);
+
+            // Readers are paired to result sets POSITIONALLY across the whole batch, which assumes
+            // every command yields exactly as many result sets as it registered readers. Break that
+            // assumption and each later command's reader is handed somebody else's result set —
+            // an exception when the shapes disagree, and the wrong rows in silence when they don't.
+            // Totals are the part we can actually check, so check them.
+            if (counter < count)
+                throw new InvalidOperationException(
+                    $"The batch returned fewer result sets than it has result readers " +
+                    $"({counter} consumed, {count} registered), so {count - counter} command(s) " +
+                    $"never received their rows and their OnResult callbacks did not fire. A " +
+                    $"command's Build must emit exactly as many row-returning statements as its " +
+                    $"Process registers readers — check any statement that returns rows only " +
+                    $"conditionally.");
+
+            if (!gr.IsConsumed)
+                throw new InvalidOperationException(
+                    $"The batch returned more result sets than its {count} result reader(s) " +
+                    $"consumed. Extra result sets shift every later command's reader onto the " +
+                    $"wrong result set, which returns another command's rows silently whenever " +
+                    $"the shapes happen to be compatible. A command's Build must emit exactly as " +
+                    $"many row-returning statements as its Process registers readers.");
         }
         else
         {
