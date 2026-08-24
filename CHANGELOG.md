@@ -3,7 +3,12 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
-## Unreleased
+## 1.11.2
+
+Diagnostics only — no behaviour change. Both entries come out of a field investigation whose root
+cause turned out to be a consumer-side hazard our API gave no hint about, and whose search was
+lengthened by our own exception message asserting something it could not know.
+
 
 ### 📌 Documented — never cache a `Task` produced by a pipeline operation
 
