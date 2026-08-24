@@ -8,8 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace DapperPipeline.Tests.Pipeline;
 
 /// <summary>
-/// Properties of the alignment markers themselves: who gets one, who doesn't, and what turning
-/// them off restores.
+/// Properties of the alignment markers themselves: who gets one, who doesn't, and what the
+/// default (off) leaves uncaught.
 /// </summary>
 public sealed class AlignmentMarkerTests : IDisposable
 {
@@ -119,9 +119,12 @@ public sealed class AlignmentMarkerTests : IDisposable
         // the batch-totals check, which is only reachable when no marker was emitted.
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
+                .Context(c => c.VerifyAlignment = true)
                 .RegisterAll(new SurplusCommand())
                 .RunAsync(CancellationToken.None));
 
+        // Verification is ON here, and still no marker was emitted — proved by the failure coming
+        // from the batch-totals check, which is only reachable when no marker is in the stream.
         Assert.Contains("more result sets", ex.Message);
     }
 
@@ -133,6 +136,7 @@ public sealed class AlignmentMarkerTests : IDisposable
         // result set is still caught — by the end-of-batch check rather than a marker.
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
+                .Context(c => c.VerifyAlignment = true)
                 .RegisterAll(new DeficitCommand(), new SurplusCommand())
                 .RunAsync(CancellationToken.None));
 
@@ -146,6 +150,7 @@ public sealed class AlignmentMarkerTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
+                .Context(c => c.VerifyAlignment = true)
                 .RegisterAll(new SurplusCommand(), deficit)
                 .RunAsync(CancellationToken.None));
 
@@ -160,15 +165,14 @@ public sealed class AlignmentMarkerTests : IDisposable
     }
 
     [Fact]
-    public async Task Turning_verification_off_restores_the_silent_data_crossing()
+    public async Task By_default_a_cancelling_mismatch_crosses_results_silently()
     {
         var deficit = new DeficitCommand();
 
-        // No exception — the totals agree and nothing else is watching. This is the escape hatch
-        // for anyone who measures the cost and opts out, and it documents exactly what they give
-        // up rather than leaving it to be discovered.
+        // No exception — the totals agree and, with verification off by default, nothing else is
+        // watching. This is what the default leaves uncaught, pinned so it is a known position
+        // rather than something rediscovered by whoever hits it.
         await BuildPipeline()
-            .Context(c => c.VerifyAlignment = false)
             .RegisterAll(new SurplusCommand(), deficit)
             .RunAsync(CancellationToken.None);
 
@@ -178,20 +182,20 @@ public sealed class AlignmentMarkerTests : IDisposable
     }
 
     [Fact]
-    public async Task Verification_returns_on_the_next_run_because_context_resets()
+    public async Task Opting_in_does_not_persist_into_the_next_run()
     {
         var pipeline = BuildPipeline();
+        var deficit = new DeficitCommand();
 
-        await pipeline
-            .Context(c => c.VerifyAlignment = false)
-            .RegisterAll(new SurplusCommand(), new DeficitCommand())
-            .RunAsync(CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pipeline
+                .Context(c => c.VerifyAlignment = true)
+                .RegisterAll(new SurplusCommand(), new DeficitCommand())
+                .RunAsync(CancellationToken.None));
 
-        // Context is per-run: the opt-out must not silently persist into later runs.
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            pipeline.RegisterAll(new SurplusCommand(), new DeficitCommand())
-                    .RunAsync(CancellationToken.None));
-
-        Assert.Contains(nameof(SurplusCommand), ex.Message);
+        // Context is per-run, so the opt-IN lapses and the next run is back to the default. A
+        // caller who wants verification on every run must ask on every run.
+        await pipeline.RegisterAll(new SurplusCommand(), deficit).RunAsync(CancellationToken.None);
+        Assert.Equal(["leaked", "mine"], deficit.Seen);
     }
 }

@@ -92,9 +92,9 @@ public class AlignmentMarkerBenchmarks
         return seen;
     }
 
-    [Benchmark(Baseline = true, Description = "Markers off")]
+    [Benchmark(Baseline = true, Description = "Markers off (default)")]
     public Task<int> MarkersOff() => RunAsync(verify: false);
 
-    [Benchmark(Description = "Markers on (default)")]
+    [Benchmark(Description = "Markers on (opt-in)")]
     public Task<int> MarkersOn() => RunAsync(verify: true);
 }

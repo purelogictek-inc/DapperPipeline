@@ -12,7 +12,7 @@ internal sealed class DapperPipelineContext(ILogger logger, IsolationLevel defau
     public int? CommandTimeout { get; set; }
     public bool LogSql { get; set; } = true;
     public int RetryCount { get; set; }
-    public bool VerifyAlignment { get; set; } = true;
+    public bool VerifyAlignment { get; set; }
 
     /// <summary>
     /// The transaction isolation level. Falls back to the <em>dialect's</em> default rather than a
@@ -41,7 +41,7 @@ internal sealed class DapperPipelineContext(ILogger logger, IsolationLevel defau
         CommandTimeout = null;
         RetryCount = 0;
         LogSql = true;
-        VerifyAlignment = true;
+        VerifyAlignment = false;
     }
 
     internal void LogSuccess() => logger.LogDebug("SQL batch succeeded. IsolationLevel={Level}", Level);

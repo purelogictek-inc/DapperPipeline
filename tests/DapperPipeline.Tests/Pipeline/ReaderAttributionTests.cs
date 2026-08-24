@@ -149,6 +149,7 @@ public sealed class ReaderAttributionTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             BuildPipeline()
+                .Context(c => c.VerifyAlignment = true)
                 .ResolveAndRegister<INoisyCommand>()
                 .ResolveAndRegister<IWeightsCommand>(c => c.OnResult(w => weights = w))
                 .RunAsync(CancellationToken.None));

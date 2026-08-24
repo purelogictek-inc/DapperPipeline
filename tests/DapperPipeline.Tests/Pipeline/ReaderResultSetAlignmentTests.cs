@@ -101,6 +101,7 @@ public sealed class ReaderResultSetAlignmentTests : IDisposable
         try
         {
             await BuildPipeline()
+                .Context(c => c.VerifyAlignment = true)
                 .ResolveAndRegister<ISlotCommand>(c =>
                 {
                     c.ResultSets = resultSets;

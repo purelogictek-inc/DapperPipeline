@@ -211,9 +211,17 @@ Real PostgreSQL 17 over TCP, BenchmarkDotNet full job:
 At three commands the delta is inside the ±4.2 μs error bar and should not be quoted as real. The
 six-command row gives ~4 μs and ~1.1 KB per marker.
 
-The argument for default-on is structural rather than "it's cheap": **markers and saved round-trips
-are the same count** (both N−1), so every marker costs ~4 μs and buys back a ~137 μs round trip —
-about **3%** of what it saves. The cost appears exactly where the risk does and nowhere else.
+The cost is structural rather than merely small: **markers and saved round-trips are the same
+count** (both N−1), so every marker costs ~4 μs and buys back a ~137 μs round trip — about **3%** of
+what it saves. The cost appears exactly where the risk does and nowhere else.
+
+**They ship off by default anyway**, decided after FF-90's root cause turned out to be unrelated
+(§7). The reasoning: the defect markers close is real and reproducible, but has zero reported
+occurrences, and the free batch-totals check already catches it whenever a batch's totals disagree.
+Markers close a genuinely narrower gap — mismatches that cancel out across commands, and prevention
+rather than detection — which is worth having available and not worth charging everyone for by
+default. Three layers got built on the momentum of a diagnosis that turned out to be wrong; the two
+free ones stayed on, the one that costs something became opt-in.
 
 > **Benchmark methodology note.** The first run produced an impossible result — markers-off measured
 > 448 μs against markers-on at 196 μs, with a 56 μs standard deviation. That was process-level

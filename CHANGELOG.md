@@ -3,6 +3,33 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## 1.12.0
+
+### 🔀 Changed — alignment verification is now opt-in
+
+`VerifyAlignment` defaults to **`false`**. Turn it on per run with
+`Context(c => c.VerifyAlignment = true)`.
+
+Nothing else changes: the batch-level checks that have always run since 1.10.0 — readers left
+starved, result sets left unconsumed — are unaffected and still catch a reader/result-set mismatch
+whenever a batch's totals disagree, at no cost. What becomes opt-in is the marker layer, which
+closes the narrower remainder: mismatches that cancel out across commands, and refusing to dispatch
+a crossing rather than reporting it after a handler has already run.
+
+**Why.** The defect markers close is real and reproducible — there is a test showing a caller
+silently receiving another command's rows — but it has zero reported occurrences in the wild, and
+it was found while investigating a failure that turned out to have an unrelated cause. Three layers
+got built on that investigation's momentum. The two that cost nothing stay on; the one that costs
+~4 μs per additional reading command is better offered than charged for.
+
+**Worth turning on** for batches carrying several reading commands, for any command that returns
+rows only conditionally, and while migrating code toward larger batches — which is exactly when
+positional pairing has the most room to go wrong.
+
+If you upgraded to 1.11.x and want the previous behaviour, add the one-line `Context` call. If a
+run of yours was throwing an alignment error on 1.11.x, **do not simply take this upgrade** — that
+exception was reporting real crossed results, and it will now go back to being silent.
+
 ## 1.11.2
 
 Diagnostics only — no behaviour change. Both entries come out of a field investigation whose root

@@ -163,7 +163,7 @@ before dispatching the next command's readers. Without it, a command that emits 
 of row-returning statements than it registers readers hands its neighbour the wrong rows — throwing
 if the shapes disagree, and **returning wrong data silently if they happen to match**.
 
-| Reading commands | Markers off | Markers on *(default)* | Δ | Allocated |
+| Reading commands | Markers off *(default)* | Markers on *(opt-in)* | Δ | Allocated |
 |---|---:|---:|---:|---:|
 | 1 | 184.3 μs | **185.0 μs** | **+0.7 μs (1.00×)** | 10.00 → 10.09 KB |
 | 3 | 212.0 μs | 215.9 μs | +3.9 μs (1.02×) | 17.06 → 19.23 KB |
@@ -187,9 +187,13 @@ both N−1 — so every marker you pay for is one round-trip you didn't:
 257.6 μs; the same six as separate round-trips would be roughly 1,100 μs. You keep a 4.3× speedup
 and spend 2% of the total making sure the results went to the right commands.
 
-Turn it off per run with `Context(c => c.VerifyAlignment = false)` — worth considering only on
-very-low-latency setups (unix socket, same host), where the round-trip shrinks but the marker does
-not, so the 3% ratio widens.
+**Verification is off by default** and turned on per run with
+`Context(c => c.VerifyAlignment = true)`. The batch-level checks that always run — readers left
+starved, result sets left unconsumed — already catch a mismatch whenever a batch's totals disagree,
+which is the common case and costs nothing. Markers buy the remainder: mismatches that cancel out
+across commands, and refusing to dispatch a crossing rather than reporting it after a handler has
+already run. Worth switching on for batches carrying several reading commands, for any command that
+returns rows only conditionally, and while migrating code toward larger batches.
 
 ---
 
@@ -200,7 +204,7 @@ not, so the 3% ratio widens.
 | Single point lookup | ✅ **1.06× raw Dapper.** The abstraction costs ~4 μs. |
 | Multi-command transaction | ✅ **Within 2% of the floor**; 2.3× faster than the naive version. |
 | Bulk insert (1,000 rows) | ✅ **3.2× faster** than hand-optimized Dapper; 18× fewer allocations; no parameter cap. |
-| Alignment verification | ✅ **Free at one command**; ~4 μs per extra command — about 3% of the round-trip it saves. |
+| Alignment verification *(opt-in)* | ✅ **Free at one command**; ~4 μs per extra command — about 3% of the round-trip it saves. |
 
 **DapperPipeline is not a faster Dapper — it is Dapper with the optimizations already applied.** On a
 single trivial query it costs you about 11 μs, and it pays that back the moment you batch commands or
