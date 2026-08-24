@@ -234,8 +234,9 @@ free ones stayed on, the one that costs something became opt-in.
 
 ## 7. FF-90's actual cause — a cached `Task` is a shared operation
 
-**Found by the downstream team on 2026-08-24, using the in-flight guard from 1.10.0.** Ten
-full-suite runs on 1.11.0 failed 3 of 10, and one capture named the misuse at the call site.
+**Found by the downstream team on 2026-08-24, using the in-flight guard from 1.10.0, and confirmed
+by them as the cause.** Ten full-suite runs on 1.11.0 failed 3 of 10, and one capture named the
+misuse at the call site. FF-90 is closed.
 
 They cached board rows in a `static ConcurrentDictionary<long, Task<IReadOnlyList<T>>>`, populated
 with `GetOrAdd(id, factory)`, where the factory closed over **the calling handler's pipeline**.
