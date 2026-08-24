@@ -5,6 +5,50 @@ Notable changes to DapperPipeline. Versions are the NuGet package versions
 
 ## Unreleased
 
+### 🛡️ New — the pipeline verifies that each command's results are actually its own
+
+Completes the alignment work. A batch returns an anonymous ordered stream of result sets — nothing
+in the wire protocol says which statement produced which — so the pipeline paired readers to result
+sets *by position* and simply assumed every command emitted as many row-returning statements as it
+registered readers. Break that in one command and its neighbour is handed the wrong rows: an
+exception when the shapes disagree, and **wrong data returned silently when they happen to match**.
+
+The pipeline now emits one constant `SELECT` between consecutive reading commands and reads it back
+**before dispatching the next command's readers**. That makes it prevention rather than detection —
+a command that over-produces is caught while its leftovers are still unread, so they never reach
+another command's handler — and it blames the **culprit** rather than the victim that used to absorb
+the damage. It also closes the gap 1.10.0's totals check could not see: two commands whose
+mismatches cancel out (one over by a result set, one under) leave the totals correct and the data
+crossed. There is a test for exactly that, asserting the wrong rows are delivered with the check off
+and the right command is named with it on.
+
+**Cost, measured against real PostgreSQL over TCP** (full table in [BENCHMARKS.md](BENCHMARKS.md)):
+
+| Reading commands | Off | On | Δ |
+|---|---:|---:|---:|
+| 1 | 184.3 μs | 185.0 μs | **+0.7 μs (1.00×)** |
+| 3 | 212.0 μs | 215.9 μs | +3.9 μs (1.02×) |
+| 6 | 236.3 μs | 257.6 μs | +21.3 μs (1.09×) |
+
+**A single reading command pays nothing**, structurally: markers separate one command's results from
+the *next* one's, so N reading commands need N−1 and one needs none. Write-only batches emit none
+either. Beyond that it is ~4 μs per additional command — and since markers and saved round-trips are
+the same count, that is **about 3% of the ~137 μs round-trip each one avoids**.
+
+Opt out per run with `Context(c => c.VerifyAlignment = false)`; worth considering only on
+very-low-latency connections, where the round-trip shrinks but the marker does not.
+
+**Custom dialects:** `IDatabaseDialect.RenderAlignmentMarker` is a new member with a default
+implementation valid on PostgreSQL, SQLite and SQL Server — nothing to do unless your engine needs a
+different constant-select syntax. `IDapperPipelineContext` gains `VerifyAlignment`, which is source-
+compatible for callers but a breaking change for the unlikely consumer who implements that interface.
+
+**Known limitation:** a command registering more readers than it has result sets can have a
+`Read<string>` reader materialize the next marker's token as data before the run fails. It still
+fails loudly one step later, but that handler observes a garbage value first. Closing it would need
+a marker per *statement*, which the pipeline cannot place without the developer declaring statement
+boundaries — a trade deliberately not taken.
+
 ### 🔎 Improved — a failing result reader now names the command it belongs to
 
 Readers are now kept grouped by the command that registered them, instead of being flattened into

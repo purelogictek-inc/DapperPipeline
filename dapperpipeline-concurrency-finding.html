@@ -1,0 +1,335 @@
+<title>The Shared Pipeline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+  :root {
+    --ground: #f6f7f9; --card: #ffffff; --ink: #191e26; --muted: #5c6675; --faint: #8b95a4;
+    --rule: #dde1e8; --accent: #2f6f9f;
+    --warn: #a86a08; --warn-bg: #fdf6e8; --crit: #a63a2c; --crit-bg: #fcf0ee;
+    --ok: #2c6e4b; --ok-bg: #eef6f1; --code-bg: #f0f2f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10141a; --card: #171c24; --ink: #e4e8ef; --muted: #9aa4b3; --faint: #6d7787;
+      --rule: #262d38; --accent: #6fadd8;
+      --warn: #d9a441; --warn-bg: #241d0f; --crit: #e08272; --crit-bg: #251512;
+      --ok: #77c39a; --ok-bg: #10201a; --code-bg: #1c222b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10141a; --card: #171c24; --ink: #e4e8ef; --muted: #9aa4b3; --faint: #6d7787;
+    --rule: #262d38; --accent: #6fadd8;
+    --warn: #d9a441; --warn-bg: #241d0f; --crit: #e08272; --crit-bg: #251512;
+    --ok: #77c39a; --ok-bg: #10201a; --code-bg: #1c222b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.62; margin: 0; padding: 2rem 1.1rem 5rem;
+  }
+  .wrap { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem; }
+
+  header { display: flex; flex-direction: column; gap: .5rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; letter-spacing: .09em; text-transform: uppercase; color: var(--faint);
+  }
+  h1 {
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: clamp(1.7rem, 5.4vw, 2.3rem); font-weight: 600; line-height: 1.18;
+    margin: 0; text-wrap: balance; letter-spacing: -.01em;
+  }
+  .standfirst { color: var(--muted); font-size: 1.02rem; margin: 0; text-wrap: pretty; }
+
+  h2 {
+    font-family: "IBM Plex Serif", Georgia, serif; font-size: 1.24rem; font-weight: 600;
+    margin: 1.3rem 0 0; text-wrap: balance; padding-bottom: .4rem; border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: .95rem; font-weight: 600; margin: .9rem 0 -.55rem; color: var(--ink); }
+  p { margin: 0; text-wrap: pretty; }
+  a { color: var(--accent); }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .84em;
+    background: var(--code-bg); padding: .1em .35em; border-radius: 3px;
+  }
+  pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .765rem; line-height: 1.55;
+    background: var(--code-bg); color: var(--ink); padding: .8rem .9rem; border-radius: 5px;
+    overflow-x: auto; margin: 0; border: 1px solid var(--rule);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--rule); border-left: 3px solid var(--rule);
+    border-radius: 5px; padding: .9rem 1rem; display: flex; flex-direction: column; gap: .6rem;
+  }
+  .panel.crit { border-left-color: var(--crit); background: var(--crit-bg); }
+  .panel.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .panel.ok   { border-left-color: var(--ok);   background: var(--ok-bg); }
+  .panel .label {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .7rem;
+    letter-spacing: .08em; text-transform: uppercase; font-weight: 600;
+  }
+  .panel.crit .label { color: var(--crit); }
+  .panel.warn .label { color: var(--warn); }
+  .panel.ok   .label { color: var(--ok); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 5px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .69rem;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--faint); font-weight: 600;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.k { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; white-space: nowrap; }
+  .verdict { font-weight: 600; white-space: nowrap; }
+  .yes { color: var(--ok); } .no { color: var(--crit); } .unk { color: var(--warn); }
+
+  ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: .55rem; }
+  li { text-wrap: pretty; }
+  li::marker { color: var(--faint); }
+
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 1rem; color: var(--faint);
+    font-size: .82rem; display: flex; flex-direction: column; gap: .35rem;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">PureLogicTek.DapperPipeline 1.9.0 · .NET 10 · finding · 2026-08-23</div>
+  <h1>The shared pipeline</h1>
+  <p class="standfirst">A concurrency test fails intermittently inside <code>DapperPipeline.RunAsync</code>,
+  throwing a different exception each run and passing on retry. Pipeline instances are <em>not</em> shared —
+  they are transient and verified distinct. What two concurrent callers do share is four singleton
+  collaborators, and that is where the two symptoms both point.</p>
+</header>
+
+<div class="panel crit">
+  <div class="label">Read this first — it corrects two earlier statements of mine</div>
+  <p>I first said “DapperPipeline is not thread-safe,” then said “production is probably safe because the
+  test shares an instance production wouldn’t.” <strong>Both were wrong, and the second was wrong in the
+  reassuring direction.</strong> Measurement below: <code>IDapperPipeline</code> is registered
+  <strong>Transient</strong>, so no instance is shared anywhere — but four of its collaborators are
+  registered <strong>Singleton</strong> and are therefore shared by every concurrent caller in the process,
+  in production exactly as in the test.</p>
+</div>
+
+<h2>Environment</h2>
+
+<div class="tablewrap">
+<table>
+  <tbody>
+    <tr><td class="k">Package</td><td><code>PureLogicTek.DapperPipeline</code> and
+      <code>…​.PostgreSql</code>, both <strong>1.9.0</strong></td></tr>
+    <tr><td class="k">Runtime</td><td>.NET 10.0.103, macOS arm64</td></tr>
+    <tr><td class="k">Database</td><td>PostgreSQL 17 in Testcontainers, one container per test class</td></tr>
+    <tr><td class="k">Registration</td><td><code>services.AddDapperPipeline(new PostgreSqlDialect(conn))</code>
+      then <code>AddDapperPipelineCommands(assembly)</code> — the documented setup, no custom lifetimes</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>The symptom</h2>
+
+<p>One test — two logically identical calls started together and awaited with
+<code>Task.WhenAll</code> — failed twice with <strong>two different exceptions</strong>, then passed on a
+third run with no code change. Different exceptions from one unchanged test is what makes this a race
+rather than a wrong assertion.</p>
+
+<h3>Run 1</h3>
+<pre><code>System.InvalidOperationException
+  Collection was modified; enumeration operation may not execute.
+    at DapperPipeline.Pipeline.DapperPipeline.RunAsync(CancellationToken token)
+    at FF.Logic.LiveDraft.CreateLiveDraftHandler.LoadWeightsAsync(…) CreateLiveDraftHandler.cs:451
+    at FF.Logic.LiveDraft.CreateLiveDraftHandler.Handle(…)          CreateLiveDraftHandler.cs:146</code></pre>
+
+<h3>Run 2 — the more informative one</h3>
+<pre><code>System.InvalidOperationException
+  A parameterless default constructor or one matching signature
+  (String platform, Int32 bench, Int64 flex_slot_id, Int32 count, String position)
+  is required for FF.Logic.Draft.ScoringWeight materialization
+    at Dapper.SqlMapper.GenerateDeserializerFromMap
+    at Dapper.SqlMapper.TypeDeserializerCache.GetReader
+    at DapperPipeline.Pipeline.DapperPipeline.ExecCoreAsync</code></pre>
+
+<div class="panel warn">
+  <div class="label">Why run 2 matters more than run 1</div>
+  <p><code>ScoringWeight</code> is <code>(string StatKey, decimal Weight)</code> — two columns. The columns
+  Dapper was handed are <code>platform, bench, flex_slot_id, count, position</code>, which belong to a
+  <em>different query in a different command</em>. This is not a mapping error. One operation was handed
+  another operation’s result set.</p>
+  <p><strong>It threw only because the shapes were incompatible.</strong> Two commands whose result sets
+  happened to be type-compatible would not throw — they would return the wrong rows, silently. That
+  possibility is the reason this is filed as urgent rather than as a flaky test.</p>
+</div>
+
+<h2>The call site</h2>
+
+<p>Ordinary, sequential, and the shortest pipeline use in the codebase — worth showing because nothing
+about it is exotic:</p>
+
+<pre><code>// FF.Logic/LiveDraft/CreateLiveDraftHandler.cs:443
+private async Task&lt;IReadOnlyDictionary&lt;StatKey, decimal&gt;&gt; LoadWeightsAsync(
+    int? rulesetId, CancellationToken token)
+{
+    IReadOnlyList&lt;ScoringWeight&gt; loaded = [];
+
+    await pipeline
+        .ResolveAndRegister&lt;ILoadScoringWeightsCommand&gt;(command =&gt;
+        {
+            command.ScoringRulesetId = id;
+            command.OnResult(result =&gt; loaded = result);
+        })
+        .RunAsync(token);
+
+    …
+}</code></pre>
+
+<p>The handler makes <strong>twelve</strong> pipeline calls over its lifetime, all sequential — there is no
+<code>Task.WhenAll</code>, <code>Task.Run</code> or <code>Parallel</code> anywhere inside it. The
+concurrency is entirely between two <em>separate handler instances</em>:</p>
+
+<pre><code>// FF.Logic.Tests/LiveDraft/CreateLiveDraftTests.cs:505
+var first  = LiveDraftAsync();          // each: using var scope = fixture.CreateScope();
+var second = LiveDraftAsync();          //       new CreateLiveDraftHandler(fixture.Pipeline, …)
+var mirrors = await Task.WhenAll(first, second);</code></pre>
+
+<h2>What was measured</h2>
+
+<p>A standalone probe against the package alone — no FF code — resolving the documented registration and
+printing lifetimes and reference identity. It is reproducible in about a minute; the source is at the end
+of this page.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Service</th><th>Lifetime</th><th>Shared across concurrent callers?</th></tr></thead>
+  <tbody>
+    <tr><td class="k">IDapperPipeline</td><td class="verdict yes">Transient</td><td>No — two resolutions verified as distinct objects</td></tr>
+    <tr><td class="k">IQueryBuilder</td><td class="verdict yes">Transient</td><td>No</td></tr>
+    <tr><td class="k">IDapperResultProcessor</td><td class="verdict yes">Transient</td><td>No</td></tr>
+    <tr><td class="k">IParameterScanner</td><td class="verdict no">Singleton</td><td><strong>Yes</strong> — verified same instance</td></tr>
+    <tr><td class="k">IRowSetRenderer</td><td class="verdict no">Singleton</td><td><strong>Yes</strong></td></tr>
+    <tr><td class="k">ISqlDebugRenderer</td><td class="verdict no">Singleton</td><td><strong>Yes</strong></td></tr>
+    <tr><td class="k">IDatabaseDialect</td><td class="verdict no">Singleton</td><td><strong>Yes</strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>The pipeline is a stateful builder</h3>
+
+<p>Its instance fields, by reflection — this is why re-entrant use of one instance would be unsafe, and why
+transient registration is the right call:</p>
+
+<pre><code>DapperPipelineContext   _context
+PipelineState           _state
+List&lt;…&gt;                 _commands            ← ResolveAndRegister appends; RunAsync enumerates
+List&lt;…&gt;                 _skippedCommands
+Int32                   _scopeIndex
+Nullable&lt;Boolean&gt;       _useTransaction
+IErrorMapper            _errorMapper</code></pre>
+
+<p><code>List&lt;T&gt;</code> mutated during its own enumeration produces <em>exactly</em> run 1’s message.
+But these fields live on an instance that is not shared — so if the state that collided is this state, the
+sharing must come from somewhere other than DI.</p>
+
+<h3>The scanner holds no instance state</h3>
+
+<p>Reflection over <code>IParameterScanner</code>’s implementation returned <strong>no instance
+fields at all</strong>. A singleton with no instance fields is either genuinely stateless — in which case
+it is not the culprit — or it memoises in <code>static</code> storage, which reflection over instance
+fields cannot see. <strong>That distinction is the crux and it needs the source.</strong></p>
+
+<h2>The hypothesis, stated so it can be refuted</h2>
+
+<p>Two concurrent operations meet inside <strong>process-wide shared state below the pipeline instance</strong>
+— most likely a non-concurrent memoisation cache keyed by command or row type, held statically or by one of
+the four singletons.</p>
+
+<p>It fits both symptoms without strain, which is the only reason to prefer it:</p>
+
+<ul>
+  <li><strong>Run 1</strong> — one thread enumerating a cached collection while another appends to it.</li>
+  <li><strong>Run 2</strong> — a cache keyed by something that is not unique per command, so one operation
+  reads the entry another operation just wrote, and Dapper is handed a deserialiser built for the wrong
+  type. The stack passing through <code>TypeDeserializerCache.GetReader</code> is consistent with the
+  mis-keying happening <em>before</em> Dapper, not inside it.</li>
+  <li><strong>Rarity</strong> — a cache is contended only on the first concurrent use of a given key, which
+  is why this needs two operations starting within milliseconds and passes on retry once the cache is warm.</li>
+</ul>
+
+<div class="panel crit">
+  <div class="label">Why this is a production question, not a test question</div>
+  <p>The four singletons are shared by <em>every</em> caller in the process. Two concurrent HTTP requests
+  have exactly the relationship the two test handlers have. The reason we have not seen it in production is
+  load: one owner, one browser. The test is not creating an unnatural condition — it is the only place we
+  currently run two pipeline operations at the same instant.</p>
+</div>
+
+<h2>What would settle it, in order</h2>
+
+<ol>
+  <li><strong>Search the package source for static or singleton-held mutable collections</strong> —
+  <code>Dictionary</code>, <code>List</code>, <code>HashSet</code> — reachable from
+  <code>RunAsync</code> / <code>ExecCoreAsync</code>, particularly any memoisation of parameter metadata or
+  result-shape by type. If one exists and is not a <code>ConcurrentDictionary</code>, that is the defect.</li>
+  <li><strong>Check the cache key.</strong> Run 2 says an operation received another operation’s result
+  shape. A key that is per-<em>type</em> rather than per-<em>operation</em>, or a shared mutable “current
+  command” slot on a singleton, would do it.</li>
+  <li><strong>Reproduce deliberately</strong> — the same two commands with different result shapes, issued
+  from two threads against one service provider, with the caches cold. If it does not reproduce there, the
+  sharing is coming from our side and we will keep looking here.</li>
+  <li><strong>Make the failure loud rather than silent.</strong> Whatever the cause, the worst outcome is
+  the compatible-shape case that returns wrong rows without throwing. A concurrency guard on the shared
+  structure — or making it genuinely immutable after first build — converts a data-crossing into an
+  exception.</li>
+</ol>
+
+<h2>What we will do on our side regardless</h2>
+
+<ul>
+  <li>Keep the failing test. It is the only concurrency coverage this path has and it is earning its place.</li>
+  <li>Not work around it in application code — no locks around pipeline calls — until the cause is known,
+  because a workaround here would hide the production case rather than fix it.</li>
+  <li>Report any further occurrence with the full exception, since the two we have describe the same
+  collision from two angles and a third would sharpen it.</li>
+</ul>
+
+<h2>The probe, so it can be re-run</h2>
+
+<pre><code>dotnet new console -o lifeprobe &amp;&amp; cd lifeprobe
+dotnet add package PureLogicTek.DapperPipeline --version 1.9.0
+dotnet add package PureLogicTek.DapperPipeline.PostgreSql --version 1.9.0
+dotnet add package Microsoft.Extensions.DependencyInjection
+
+// Program.cs
+using DapperPipeline.Dialects.PostgreSql;
+using DapperPipeline.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+
+var services = new ServiceCollection();
+services.AddDapperPipeline(new PostgreSqlDialect("Host=localhost;Database=x;Username=x;Password=x"));
+
+foreach (var d in services)
+    if (d.ServiceType.FullName is { } n &amp;&amp; (n.Contains("Pipeline") || n.Contains("Dapper")))
+        Console.WriteLine($"{d.Lifetime,-9}  {n}");
+
+var sp = services.BuildServiceProvider();
+var a = sp.GetRequiredService&lt;DapperPipeline.Abstractions.IDapperPipeline&gt;();
+var b = sp.GetRequiredService&lt;DapperPipeline.Abstractions.IDapperPipeline&gt;();
+Console.WriteLine($"pipeline instances distinct : {!ReferenceEquals(a, b)}");   // True</code></pre>
+
+<footer>
+  <div>FF card <strong>FF-90</strong> · assigned W15 · main is intermittently red on this test</div>
+  <div>Evidence logs: <code>.gate-logs/20260823-212054-1631.log</code> (run 1),
+    <code>.gate-logs/20260823-211705-62959.log</code> (earlier), run 3 green with no change</div>
+  <div>Ruled out en route: <code>HTTPS_PROXY=127.0.0.1:8118</code> in the coordinator’s shell was timing out
+    every Testcontainers database connection and masking this failure behind a different one. Unrelated to
+    the package; noted so nobody re-chases it.</div>
+</footer>
+
+</div>

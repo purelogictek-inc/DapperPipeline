@@ -111,6 +111,35 @@ public sealed class AlignmentMarkerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_single_reading_command_emits_no_marker_at_all()
+    {
+        // Markers separate one reading command's results from the NEXT one's. With only one there
+        // is no boundary to police, and the end-of-batch check already covers over-production —
+        // so the common single-command run pays nothing. Proof: the failure below is reported by
+        // the batch-totals check, which is only reachable when no marker was emitted.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            BuildPipeline()
+                .RegisterAll(new SurplusCommand())
+                .RunAsync(CancellationToken.None));
+
+        Assert.Contains("more result sets", ex.Message);
+    }
+
+    [Fact]
+    public async Task The_last_reading_command_needs_no_marker_either()
+    {
+        // Same reasoning at the tail of a longer batch: nothing follows the final reading command,
+        // so N reading commands need N-1 markers. The surplus command is last here, and its extra
+        // result set is still caught — by the end-of-batch check rather than a marker.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            BuildPipeline()
+                .RegisterAll(new DeficitCommand(), new SurplusCommand())
+                .RunAsync(CancellationToken.None));
+
+        Assert.NotNull(ex.Message);
+    }
+
+    [Fact]
     public async Task Markers_catch_a_cancelling_mismatch_that_batch_totals_cannot()
     {
         var deficit = new DeficitCommand();

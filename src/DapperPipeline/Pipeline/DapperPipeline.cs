@@ -188,6 +188,15 @@ internal sealed class DapperPipeline(
         // 3. For each registered command: pre-check, scope, build, process
         var includedCommands = new List<(string Name, IQueryCommand Command)>(_commands.Count);
         var readerGroups = new List<CommandReaders>(_commands.Count);
+
+        // A reading command whose boundary marker has not been emitted yet. Markers separate one
+        // reading command's result sets from the NEXT one's, so they are emitted lazily: only once
+        // we know another command follows. The final reading command never gets one — nothing comes
+        // after it to cross into, and anything it over-produces is caught by the end-of-batch check.
+        // A run with a single reading command therefore emits no markers at all, which is the
+        // common case and now costs exactly nothing.
+        CommandReaders? awaitingMarker = null;
+
         foreach (var (name, cmd) in _commands)
         {
             if (!cmd.ShouldInclude(out var reason))
@@ -196,6 +205,14 @@ internal sealed class DapperPipeline(
                     name, reason ?? "ShouldInclude returned false");
                 _skippedCommands.Add(name);
                 continue;
+            }
+
+            // Close the previous reading command's results before this command's SQL begins.
+            if (awaitingMarker is not null)
+            {
+                queryBuilder.EnsureStatementSeparator(dialect.StatementSeparator);
+                queryBuilder.AppendRaw(dialect.RenderAlignmentMarker(awaitingMarker.Marker!));
+                awaitingMarker = null;
             }
 
             // Separate this command's SQL from the previous one's. Without it the last token of the
@@ -225,21 +242,19 @@ internal sealed class DapperPipeline(
             var commandReaders = processor.Readers;
             if (commandReaders.Count > 0)
             {
-                // Emit this command's alignment marker immediately after its SQL — the one moment
-                // the command's statements are known to have just ended. Only commands that read
-                // get one: a write-only batch emits no markers at all and keeps the cheaper
-                // ExecuteAsync path untouched.
-                string? marker = null;
-                if (_context.VerifyAlignment)
-                {
-                    marker = $"dpm_{scopeIndex:D3}";
-                    queryBuilder.EnsureStatementSeparator(dialect.StatementSeparator);
-                    queryBuilder.AppendRaw(dialect.RenderAlignmentMarker(marker));
-                }
+                // Claim a token now; it is only written into the SQL if another command follows.
+                var group = new CommandReaders(name, scopeIndex, commandReaders,
+                    _context.VerifyAlignment ? $"dpm_{scopeIndex:D3}" : null);
 
-                readerGroups.Add(new CommandReaders(name, scopeIndex, commandReaders, marker));
+                readerGroups.Add(group);
+                if (group.Marker is not null) awaitingMarker = group;
             }
         }
+
+        // Nothing followed the last reading command, so its marker was never emitted — drop the
+        // token it was holding so the read loop does not go looking for one.
+        if (awaitingMarker is not null)
+            readerGroups[^1] = awaitingMarker with { Marker = null };
 
         // 4. Drop unused parameters
         queryBuilder.Optimize();

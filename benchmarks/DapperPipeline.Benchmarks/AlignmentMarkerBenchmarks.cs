@@ -56,6 +56,17 @@ public class AlignmentMarkerBenchmarks
         services.AddDapperPipeline(new DapperPipeline.Dialects.PostgreSql.PostgreSqlDialect(Bench.ConnectionString));
         services.AddTransient<IReadOrderCommand, ReadOrderCommand>();
         _provider = services.BuildServiceProvider();
+
+        // Drive the whole path a few times before measuring. BenchmarkDotNet warms up each
+        // benchmark, but not the costs a process pays exactly once — opening the first pooled
+        // connection, Npgsql loading its type handlers, JIT across the pipeline and Dapper, and
+        // Dapper's deserializer cache filling. Whichever benchmark ran first used to absorb all of
+        // it, which is why the first row came back slower than the rest and wildly noisy.
+        for (var i = 0; i < 5; i++)
+        {
+            RunAsync(verify: false).GetAwaiter().GetResult();
+            RunAsync(verify: true).GetAwaiter().GetResult();
+        }
     }
 
     [GlobalCleanup]

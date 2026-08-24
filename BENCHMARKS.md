@@ -154,6 +154,45 @@ code* renders as `unnest` on PostgreSQL, `OPENJSON` on SQL Server and `json_each
 
 ---
 
+## 4. Alignment verification — **you pay ~4 μs to avoid a ~140 μs round-trip**
+
+A batch returns an anonymous ordered stream of result sets; nothing in the wire protocol says which
+statement produced which. The pipeline pairs readers to result sets by position, and verifies that
+pairing by emitting one constant `SELECT` between consecutive reading commands and reading it back
+before dispatching the next command's readers. Without it, a command that emits a different number
+of row-returning statements than it registers readers hands its neighbour the wrong rows — throwing
+if the shapes disagree, and **returning wrong data silently if they happen to match**.
+
+| Reading commands | Markers off | Markers on *(default)* | Δ | Allocated |
+|---|---:|---:|---:|---:|
+| 1 | 184.3 μs | **185.0 μs** | **+0.7 μs (1.00×)** | 10.00 → 10.09 KB |
+| 3 | 212.0 μs | 215.9 μs | +3.9 μs (1.02×) | 17.06 → 19.23 KB |
+| 6 | 236.3 μs | 257.6 μs | +21.3 μs (1.09×) | 29.25 → 34.96 KB |
+
+**One reading command costs exactly nothing**, and that is structural rather than lucky: markers
+separate one command's results from the *next* one's, so N reading commands need N−1 of them and a
+single-command run emits none. Write-only batches emit none either — they never take the reading
+path at all. At three commands the delta is smaller than the ±4.2 μs error bar. Only the six-command
+row is large enough to divide safely: **~4 μs and ~1.1 KB per marker.**
+
+The ratio that matters is fixed, not incidental. Markers and saved round-trips are *the same count* —
+both N−1 — so every marker you pay for is one round-trip you didn't:
+
+| Per additional command in a batch | Cost |
+|---|---:|
+| One alignment marker | **~4 μs** |
+| One round-trip, if you hadn't batched ([§2](#2-three-writes-in-one-transaction--we-land-on-the-floor)) | **~137 μs** |
+
+**Verification costs about 3% of what batching saves.** Six commands batched-and-verified run in
+257.6 μs; the same six as separate round-trips would be roughly 1,100 μs. You keep a 4.3× speedup
+and spend 2% of the total making sure the results went to the right commands.
+
+Turn it off per run with `Context(c => c.VerifyAlignment = false)` — worth considering only on
+very-low-latency setups (unix socket, same host), where the round-trip shrinks but the marker does
+not, so the 3% ratio widens.
+
+---
+
 ## Summary
 
 | Scenario | Verdict |
@@ -161,6 +200,7 @@ code* renders as `unnest` on PostgreSQL, `OPENJSON` on SQL Server and `json_each
 | Single point lookup | ✅ **1.06× raw Dapper.** The abstraction costs ~4 μs. |
 | Multi-command transaction | ✅ **Within 2% of the floor**; 2.3× faster than the naive version. |
 | Bulk insert (1,000 rows) | ✅ **3.2× faster** than hand-optimized Dapper; 18× fewer allocations; no parameter cap. |
+| Alignment verification | ✅ **Free at one command**; ~4 μs per extra command — about 3% of the round-trip it saves. |
 
 **DapperPipeline is not a faster Dapper — it is Dapper with the optimizations already applied.** On a
 single trivial query it costs you about 11 μs, and it pays that back the moment you batch commands or
