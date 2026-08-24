@@ -3,6 +3,34 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## Unreleased
+
+### 🐞 Fixed — a retried attempt silently skipped every `OnResult` callback
+
+`IDapperResultProcessor.Readers` is destructive — fetching it clears the scopes — and it was
+fetched *per attempt* inside the retry loop. So when `Context(c => c.RetryCount = n)` was set and
+the first attempt failed transiently **at execute time**, the retried attempt saw no readers, took
+the plain-execute branch, and completed "successfully" with every result callback skipped: the SQL
+ran, the caller got nothing, and nothing threw. The readers are now snapshotted once per run,
+before behaviors and the resilience pipeline, so every attempt delivers results.
+`RetryReplaysReadersTests` pins it by injecting a one-time `SQLITE_BUSY` at `ExecuteReader`.
+
+### 🛡️ New — concurrent use of one pipeline instance now throws instead of corrupting
+
+A pipeline instance is one logical operation at a time. That was always the contract, but it was
+written nowhere and enforced by nothing — and the failure mode for sharing an instance across
+threads is vicious: two operations interleave their commands and result readers, and when the
+result shapes happen to be *compatible*, each caller gets the other's rows **silently**. (When
+they're incompatible you get a random `InvalidOperationException` out of `RunAsync` or a Dapper
+materialization error — the intermittent-test-failure presentation.)
+
+`RunAsync` now takes an interlocked in-flight flag, and every configuration/registration member
+(`Register`, `Bind`, `SetState`, `Context`, `WithTransaction`, `WithoutTransaction`) checks it. The
+misuse fails immediately with an exception that names the fix: resolve a separate `IDapperPipeline`
+per concurrent caller — the registration is transient precisely so each resolution is a fresh
+instance — instead of caching one and sharing it. Sequential reuse of an instance is unchanged and
+still supported. The thread-affinity contract is now also documented on `IDapperPipeline`.
+
 ## 1.9.0
 
 ### ✨ New — the two doors a string can take into SQL, now discoverable

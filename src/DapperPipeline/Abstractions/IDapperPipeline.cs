@@ -14,6 +14,14 @@ namespace DapperPipeline.Abstractions;
 ///     })
 ///     .RunAsync(token);
 /// </code>
+/// <para>
+/// <strong>Thread affinity:</strong> a pipeline instance is one logical operation at a time.
+/// Reusing an instance <em>sequentially</em> is supported — <c>RunAsync</c> resets it — but two
+/// threads must never share one: registration is transient precisely so that every concurrent
+/// caller resolves its own instance. Do not cache a resolved pipeline in a singleton or a test
+/// fixture and hand it to parallel callers; concurrent use throws
+/// <see cref="InvalidOperationException"/>.
+/// </para>
 /// </remarks>
 public interface IDapperPipeline
 {

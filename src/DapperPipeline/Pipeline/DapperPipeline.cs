@@ -36,6 +36,12 @@ internal sealed class DapperPipeline(
     // null = "nobody said" — resolved from the dialect at run time. Explicit beats dialect.
     private bool? _useTransaction;
 
+    // 0 = idle, 1 = a RunAsync is in flight. A pipeline instance is one logical operation at a
+    // time: two threads sharing an instance interleave their commands and readers, and when the
+    // result shapes happen to be compatible that returns the WRONG ROWS silently. The guard turns
+    // that into an immediate, named error instead.
+    private int _running;
+
     /// <summary>
     /// Folds every registered <see cref="IErrorMapper"/> into a single mapper.
     /// Returns null when none are registered, so error mapping is genuinely optional.
@@ -58,6 +64,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline Context(Action<IDapperPipelineContext>? setup)
     {
+        ThrowIfRunning();
         setup?.Invoke(_context);
         return this;
     }
@@ -65,6 +72,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline WithTransaction()
     {
+        ThrowIfRunning();
         _useTransaction = true;
         return this;
     }
@@ -72,6 +80,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline WithoutTransaction()
     {
+        ThrowIfRunning();
         _useTransaction = false;
         return this;
     }
@@ -79,6 +88,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline SetState<T>(T value) where T : class
     {
+        ThrowIfRunning();
         _state.Set(value);
         StatePopulatorCache.Populate(value, RegisterPipelineBinding);
         return this;
@@ -87,6 +97,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline Bind<T>(string name, T value)
     {
+        ThrowIfRunning();
         RegisterPipelineBinding(name, value);
         return this;
     }
@@ -104,6 +115,7 @@ internal sealed class DapperPipeline(
     /// <inheritdoc/>
     public IDapperPipeline Register(IQueryCommand? command)
     {
+        ThrowIfRunning();
         if (command == null) return this;
         _commands.Add((command.Name, command));
         return this;
@@ -142,6 +154,27 @@ internal sealed class DapperPipeline(
 
     /// <inheritdoc/>
     public async Task<IDapperPipeline> RunAsync(CancellationToken token = default)
+    {
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
+            throw new InvalidOperationException(
+                "RunAsync is already in flight on this IDapperPipeline instance. A pipeline " +
+                "instance is one logical operation at a time — reusing it sequentially is fine, " +
+                "concurrently is not: two operations sharing an instance interleave their commands " +
+                "and result readers, and compatible result shapes return the wrong rows silently. " +
+                "Resolve a separate IDapperPipeline per concurrent caller (the registration is " +
+                "transient, so every resolution is a fresh instance) instead of caching one and " +
+                "sharing it.");
+        try
+        {
+            return await RunCoreAsync(token).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _running, 0);
+        }
+    }
+
+    private async Task<IDapperPipeline> RunCoreAsync(CancellationToken token)
     {
         // 1. Pre-validation — fail fast if any IQueryCommand<T> is missing OnResult
         ValidateResultBindings();
@@ -195,7 +228,13 @@ internal sealed class DapperPipeline(
         if (_context.LogSql && logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("SQL:\n{Sql}", queryBuilder.ToDebug());
 
-        // 5. Run behaviors → execute
+        // 5. Snapshot the result readers ONCE per run. processor.Readers is destructive — fetching
+        // it clears the scopes — so fetching it per attempt inside the retry loop meant a retried
+        // attempt saw no readers, took the ExecuteAsync branch, and silently skipped every
+        // OnResult callback.
+        var readers = processor.NeedsToProcess ? processor.Readers : null;
+
+        // 6. Run behaviors → execute
         try
         {
             var context = new PipelineContext
@@ -203,7 +242,7 @@ internal sealed class DapperPipeline(
                 CommandNames = includedCommands.Select(c => c.Name).ToList(),
                 SkippedCommandNames = _skippedCommands.AsReadOnly()
             };
-            await RunWithBehaviorsAsync(context, token).ConfigureAwait(false);
+            await RunWithBehaviorsAsync(context, readers, token).ConfigureAwait(false);
         }
         finally
         {
@@ -218,11 +257,14 @@ internal sealed class DapperPipeline(
         return this;
     }
 
-    private async Task RunWithBehaviorsAsync(PipelineContext context, CancellationToken token)
+    private async Task RunWithBehaviorsAsync(
+        PipelineContext context,
+        List<Action<SqlMapper.GridReader>>? readers,
+        CancellationToken token)
     {
         var behaviors = services.GetServices<IPipelineBehavior>().ToList();
 
-        var execution = () => ExecuteCoreAsync(token);
+        var execution = () => ExecuteCoreAsync(readers, token);
 
         for (var i = behaviors.Count - 1; i >= 0; i--)
         {
@@ -234,7 +276,7 @@ internal sealed class DapperPipeline(
         await execution().ConfigureAwait(false);
     }
 
-    private async Task ExecuteCoreAsync(CancellationToken token)
+    private async Task ExecuteCoreAsync(List<Action<SqlMapper.GridReader>>? readers, CancellationToken token)
     {
         try
         {
@@ -244,7 +286,7 @@ internal sealed class DapperPipeline(
                 await using var conn = dialect.CreateConnection();
                 if (conn.State != ConnectionState.Open)
                     await conn.OpenAsync(ct).ConfigureAwait(false);
-                await ExecTransactionAsync(conn, ct).ConfigureAwait(false);
+                await ExecTransactionAsync(conn, readers, ct).ConfigureAwait(false);
             }, token).ConfigureAwait(false);
 
             _context.LogSuccess();
@@ -267,6 +309,22 @@ internal sealed class DapperPipeline(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Configuration and registration while a run is in flight can only mean a second thread —
+    /// nothing inside <c>RunAsync</c> calls back into these members — and a command registered
+    /// mid-run would be silently discarded by the run's <c>finally</c> anyway. Loud beats silent.
+    /// </summary>
+    private void ThrowIfRunning()
+    {
+        if (Volatile.Read(ref _running) != 0)
+            throw new InvalidOperationException(
+                "This IDapperPipeline instance has a RunAsync in flight on another thread, so it " +
+                "cannot be configured or given commands right now. A pipeline instance is one " +
+                "logical operation at a time. Resolve a separate IDapperPipeline per concurrent " +
+                "caller (the registration is transient, so every resolution is a fresh instance) " +
+                "instead of caching one and sharing it.");
+    }
 
     private void ValidateResultBindings()
     {
@@ -322,19 +380,22 @@ internal sealed class DapperPipeline(
             (_useTransaction == false ? ", and WithoutTransaction() was called" : "") + ".)");
     }
 
-    private async Task ExecTransactionAsync(DbConnection conn, CancellationToken token)
+    private async Task ExecTransactionAsync(
+        DbConnection conn,
+        List<Action<SqlMapper.GridReader>>? readers,
+        CancellationToken token)
     {
         // No BEGIN, no COMMIT, no rollback — just the statements. Saves two round-trips.
         if (!UseTransaction)
         {
-            await ExecCoreAsync(conn, transaction: null, token).ConfigureAwait(false);
+            await ExecCoreAsync(conn, transaction: null, readers, token).ConfigureAwait(false);
             return;
         }
 
         await using var tx = await conn.BeginTransactionAsync(_context.Level, token).ConfigureAwait(false);
         try
         {
-            await ExecCoreAsync(conn, tx, token).ConfigureAwait(false);
+            await ExecCoreAsync(conn, tx, readers, token).ConfigureAwait(false);
             await tx.CommitAsync(token).ConfigureAwait(false);
         }
         catch
@@ -350,11 +411,14 @@ internal sealed class DapperPipeline(
     /// <c>WithoutTransaction()</c> — Dapper treats that as "no transaction", which is exactly what
     /// a connection does by default.
     /// </summary>
-    private async Task ExecCoreAsync(DbConnection conn, DbTransaction? transaction, CancellationToken token)
+    private async Task ExecCoreAsync(
+        DbConnection conn,
+        DbTransaction? transaction,
+        List<Action<SqlMapper.GridReader>>? readers,
+        CancellationToken token)
     {
-        if (processor.NeedsToProcess)
+        if (readers is { Count: > 0 })
         {
-            var readers = processor.Readers;
             var count = readers.Count;
             var counter = 0;
 
