@@ -97,6 +97,26 @@ public sealed class ReaderAttributionTests : IDisposable
             processor.Read<ScoringWeight>(rows => EmitResult(rows.ToList()));
     }
 
+    /// <summary>A consumer's own exception type, thrown by a callback that refuses its rows.</summary>
+    public sealed class InvalidDraftException(string message) : Exception(message);
+
+    private interface IRefusingCommand : IQueryCommand<string>;
+
+    /// <summary>
+    /// The shape a downstream team hit on 1.11.0: a domain rule inspects the rows it was handed
+    /// and refuses them. Nothing to do with alignment — the exception must reach the caller with
+    /// its own type, so <c>catch (InvalidDraftException)</c> still works.
+    /// </summary>
+    private sealed class RefusingCommand : BaseQueryCommand<string>, IRefusingCommand
+    {
+        public override void Build(IQueryBuilder builder, IPipelineState state) =>
+            builder.Append($"SELECT platform FROM slots");
+
+        public override void Process(IDapperResultProcessor processor) =>
+            processor.Read<string>(_ =>
+                throw new InvalidDraftException("Board player 32 has no usable fantasy position."));
+    }
+
     /// <summary>Reports a domain error from its own result set — the documented EmitError path.</summary>
     private interface IDomainErrorCommand : IQueryCommand<string>;
 
@@ -118,6 +138,7 @@ public sealed class ReaderAttributionTests : IDisposable
         services.AddTransient<IWrongTypeCommand, WrongTypeCommand>();
         services.AddTransient<IWeightsCommand, WeightsCommand>();
         services.AddTransient<IDomainErrorCommand, DomainErrorCommand>();
+        services.AddTransient<IRefusingCommand, RefusingCommand>();
         return services.BuildServiceProvider().GetRequiredService<IDapperPipeline>();
     }
 
@@ -180,6 +201,33 @@ public sealed class ReaderAttributionTests : IDisposable
                 .RunAsync(CancellationToken.None));
 
         Assert.Contains("league is locked", ex.Message);
+    }
+
+    [Fact]
+    public async Task An_exception_thrown_by_a_result_callback_keeps_its_own_type()
+    {
+        // Attribution decorates failures from READING a result set, because those can mean results
+        // crossed between commands. A callback refusing its rows is consumer business and must not
+        // be rewrapped — doing so broke catch(TDomain) around a pipeline call and appended an
+        // alignment diagnostic to a failure that had nothing to do with alignment.
+        var ex = await Assert.ThrowsAsync<InvalidDraftException>(() =>
+            BuildPipeline()
+                .ResolveAndRegister<IRefusingCommand>(c => c.OnResult(_ => { }))
+                .RunAsync(CancellationToken.None));
+
+        Assert.Equal("Board player 32 has no usable fantasy position.", ex.Message);
+        Assert.DoesNotContain("misaligned", ex.Message);
+    }
+
+    [Fact]
+    public async Task A_callback_exception_survives_a_multi_command_batch_too()
+    {
+        // Same, with a marker in play: the boundary machinery must not catch and redecorate it.
+        await Assert.ThrowsAsync<InvalidDraftException>(() =>
+            BuildPipeline()
+                .ResolveAndRegister<IRefusingCommand>(c => c.OnResult(_ => { }))
+                .ResolveAndRegister<IWeightsCommand>(c => c.OnResult(_ => { }))
+                .RunAsync(CancellationToken.None));
     }
 
     [Fact]

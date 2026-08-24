@@ -3,6 +3,29 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## 1.11.1
+
+### 🔴 Fixed — an exception thrown by your result callback kept its own type again
+
+**Regression in 1.11.0.** Reader attribution wrapped *every* exception escaping a reader in an
+`InvalidOperationException` carrying an alignment diagnostic. That was right for failures while
+**reading** a result set — a materialization error genuinely can mean results crossed between
+commands — but wrong for anything thrown by the command's own callback. A domain rule inspecting
+its rows and refusing them is consumer business, not an alignment fault, and rewrapping it broke
+`catch (MyDomainException)` and `Assert.ThrowsAsync<T>` around a pipeline call while appending a
+"your readers may be misaligned" hint to a failure that had nothing to do with alignment.
+
+Reported from the field within a day of release: one broken test against 126 domain-exception throw
+sites, so narrow in practice — but "a reader validates its rows and refuses" is a normal pattern and
+deserved to keep working.
+
+The two phases are now told apart. Failures from reading a result set are still decorated and still
+name the command; anything thrown by a result callback propagates with its original type, message
+and stack. Note that Dapper raises materialization failures as `InvalidOperationException` anyway, so
+the decorated path never changes the exception type a consumer was already catching.
+
+No action needed on upgrade — code written against 1.10.0 and earlier behaves as it did.
+
 ## 1.11.0
 
 Finishes what 1.10.0 started. Where 1.10.0 could tell you a batch's reader and result-set *totals*

@@ -1,8 +1,10 @@
 using System.Data;
 using System.Data.Common;
+using System.Runtime.ExceptionServices;
 using Dapper;
 using DapperPipeline.Abstractions;
 using DapperPipeline.ErrorHandling;
+using DapperPipeline.Processing.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -398,15 +400,29 @@ internal sealed class DapperPipeline(
     /// which command it belonged to by recognising the column names in the message.
     /// </summary>
     /// <remarks>
-    /// <see cref="PipelineException"/> passes through untouched: it is the documented way a command
-    /// reports a domain error from its own result set (<c>BaseQueryCommand&lt;T&gt;.EmitError</c>),
-    /// and consumers catch it by type. Cancellation passes through for the same reason.
+    /// <para>
+    /// Only failures from <em>reading</em> the result set are decorated, because those are the ones
+    /// that can mean results crossed between commands. Anything thrown by the command's own callback
+    /// — a domain rule inspecting its rows and refusing them — is consumer code reporting consumer
+    /// business, and reaches the caller with its original type, message and stack untouched.
+    /// Decorating those would break <c>catch (MyDomainException)</c> around a pipeline call and
+    /// append an alignment diagnostic to a failure that has nothing to do with alignment.
+    /// </para>
+    /// <para>
+    /// Dapper raises materialization failures as <see cref="InvalidOperationException"/>, so
+    /// decorating them preserves the exception type consumers were already catching.
+    /// </para>
     /// </remarks>
     private static void InvokeReader(CommandReaders group, int index, SqlMapper.GridReader gr)
     {
         try
         {
             group.Readers[index](gr);
+        }
+        catch (ResultHandlerException handlerFault)
+        {
+            // The command's callback threw. Rethrow exactly what it threw, with its original stack.
+            ExceptionDispatchInfo.Capture(handlerFault.InnerException!).Throw();
         }
         catch (Exception ex) when (ex is not PipelineException and not OperationCanceledException)
         {
