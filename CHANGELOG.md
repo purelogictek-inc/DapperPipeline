@@ -9,7 +9,7 @@ Finishes what 1.10.0 started. Where 1.10.0 could tell you a batch's reader and r
 disagreed, 1.11.0 verifies each command's results are its own and names the command at fault — and
 measures what that costs (nothing at one command; ~3% of the round-trip it saves beyond that).
 The story behind both releases is written up in
-[documents/alignment-investigation.md](documents/alignment-investigation.md).
+[docs/alignment-investigation.md](docs/alignment-investigation.md).
 
 ### 🛡️ New — the pipeline verifies that each command's results are actually its own
 
@@ -78,9 +78,9 @@ ran out of result sets and which of its readers went unfed, rather than reportin
 The original exception is preserved as `InnerException`, and `PipelineException` raised by a
 command's own `EmitError` passes through unwrapped so consumers can still catch it by type.
 
-This is the second of three layers. 1.10.0 shipped batch **totals** checking; this adds per-command
-**attribution**; per-command result-set **markers** — the only layer that can catch mismatches whose
-totals happen to cancel out — remain future work, pending a benchmark of their cost.
+This is the second of the three layers, and it is what makes the third one legible: 1.10.0 shipped
+batch **totals** checking, this adds per-command **attribution**, and the markers above use that
+attribution to name the command at fault.
 
 ## 1.10.0
 
