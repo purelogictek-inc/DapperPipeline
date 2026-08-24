@@ -44,6 +44,11 @@ internal sealed class DapperPipeline(
     // that into an immediate, named error instead.
     private int _running;
 
+    // Managed thread that claimed _running. Recorded so a conflict can say whether the in-flight
+    // run started on THIS thread — which means re-entrant use from a callback or behavior, a
+    // different bug with a different fix than two flows sharing an instance.
+    private int _runningThreadId;
+
     /// <summary>
     /// Folds every registered <see cref="IErrorMapper"/> into a single mapper.
     /// Returns null when none are registered, so error mapping is genuinely optional.
@@ -163,9 +168,12 @@ internal sealed class DapperPipeline(
                 "instance is one logical operation at a time — reusing it sequentially is fine, " +
                 "concurrently is not: two operations sharing an instance interleave their commands " +
                 "and result readers, and compatible result shapes return the wrong rows silently. " +
+                DescribeInFlightRun() +
                 "Resolve a separate IDapperPipeline per concurrent caller (the registration is " +
                 "transient, so every resolution is a fresh instance) instead of caching one and " +
                 "sharing it.");
+
+        Volatile.Write(ref _runningThreadId, Environment.CurrentManagedThreadId);
         try
         {
             return await RunCoreAsync(token).ConfigureAwait(false);
@@ -437,6 +445,29 @@ internal sealed class DapperPipeline(
     }
 
     /// <summary>
+    /// Says what can be said about who holds the in-flight run. The stack of the call that lost the
+    /// race shows only the loser, so without this a reader is left assuming the other party is a
+    /// second thread — when a callback or behavior re-entering the same instance produces an
+    /// identical-looking failure and needs a completely different fix.
+    /// </summary>
+    private string DescribeInFlightRun()
+    {
+        var owner = Volatile.Read(ref _runningThreadId);
+        var current = Environment.CurrentManagedThreadId;
+
+        return owner == current
+            ? $"The in-flight run started on this same thread ({current}), so this is re-entrant " +
+              $"use — something reached by the run itself (a result callback, an IPipelineBehavior, " +
+              $"an error mapper) is calling back into the pipeline that is still running. Give that " +
+              $"path its own pipeline instance. "
+            : $"The in-flight run started on thread {owner}; this call is on thread {current}. That " +
+              $"is consistent with two flows sharing one instance, and also with one flow whose " +
+              $"earlier call was never awaited and is still running — the stack below shows only " +
+              $"the call that lost the race, not the one holding it. Compare the two callers' " +
+              $"pipeline instances before assuming which. ";
+    }
+
+    /// <summary>
     /// Configuration and registration while a run is in flight can only mean a second thread —
     /// nothing inside <c>RunAsync</c> calls back into these members — and a command registered
     /// mid-run would be silently discarded by the run's <c>finally</c> anyway. Loud beats silent.
@@ -445,11 +476,12 @@ internal sealed class DapperPipeline(
     {
         if (Volatile.Read(ref _running) != 0)
             throw new InvalidOperationException(
-                "This IDapperPipeline instance has a RunAsync in flight on another thread, so it " +
-                "cannot be configured or given commands right now. A pipeline instance is one " +
-                "logical operation at a time. Resolve a separate IDapperPipeline per concurrent " +
-                "caller (the registration is transient, so every resolution is a fresh instance) " +
-                "instead of caching one and sharing it.");
+                "This IDapperPipeline instance already has a RunAsync in flight, so it cannot be " +
+                "configured or given commands right now. A pipeline instance is one logical " +
+                "operation at a time. " + DescribeInFlightRun() +
+                "Resolve a separate IDapperPipeline per concurrent caller (the registration is " +
+                "transient, so every resolution is a fresh instance) instead of caching one and " +
+                "sharing it.");
     }
 
     private void ValidateResultBindings()

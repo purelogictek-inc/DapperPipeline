@@ -3,6 +3,22 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## Unreleased
+
+### 🔎 Improved — the concurrency guard no longer guesses which misuse it caught
+
+The guard's message asserted the in-flight run was "on another thread". It could not know that: it
+reads a flag, and the stack it throws with shows only the caller that **lost** the race, never the
+one holding it. Three different mistakes produce an identical-looking failure — two flows sharing
+an instance, one flow whose earlier call was never awaited, and a callback or behavior re-entering
+the pipeline that is still running it — and the message picked one, sending at least one team
+hunting a shared instance that may not exist.
+
+It now records which thread claimed the run and says only what follows from that. Re-entrancy is
+identified positively (same thread, so the caller *is* the run) and named as such, since no
+threading analyzer can see it. A cross-thread conflict names both remaining explanations and says
+outright that the stack below cannot distinguish them.
+
 ## 1.11.1
 
 ### 🔴 Fixed — an exception thrown by your result callback kept its own type again

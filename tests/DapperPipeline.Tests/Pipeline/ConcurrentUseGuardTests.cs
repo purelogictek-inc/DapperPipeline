@@ -109,6 +109,81 @@ public sealed class ConcurrentUseGuardTests : IDisposable
         await firstRun;
     }
 
+    private interface IReentrantCommand : IQueryCommand<string>
+    {
+        Action? OnRead { get; set; }
+    }
+
+    /// <summary>
+    /// A command whose result callback reaches back into the pipeline that is still running it.
+    /// No second thread, no dropped await — the kind of misuse a threading analyzer cannot see,
+    /// and which produces a conflict that looks identical to two flows sharing an instance.
+    /// </summary>
+    private sealed class ReentrantCommand : BaseQueryCommand<string>, IReentrantCommand
+    {
+        public Action? OnRead { get; set; }
+
+        public override void Build(IQueryBuilder builder, IPipelineState state) =>
+            builder.Append($"SELECT note FROM audit");
+
+        public override void Process(IDapperResultProcessor processor) =>
+            processor.Read<string>(_ => OnRead?.Invoke());
+    }
+
+    [Fact]
+    public async Task Re_entrant_use_from_a_callback_is_diagnosed_as_re_entrancy_not_as_sharing()
+    {
+        var services = new ServiceCollection();
+        services.AddDapperPipeline(new SqliteDialect(ConnectionString));
+        services.AddTransient<IBlockingCommand, BlockingCommand>();
+        services.AddTransient<IReentrantCommand, ReentrantCommand>();
+        var pipeline = services.BuildServiceProvider().GetRequiredService<IDapperPipeline>();
+
+        Exception? caught = null;
+        pipeline.ResolveAndRegister<IReentrantCommand>(c =>
+        {
+            c.OnResult(_ => { });
+            // Reach back into the pipeline mid-run, on this very thread.
+            c.OnRead = () =>
+            {
+                try { pipeline.Register(new BlockingCommand()); }
+                catch (Exception ex) { caught = ex; }
+            };
+        });
+
+        await pipeline.RunAsync(CancellationToken.None);
+
+        Assert.NotNull(caught);
+        // The message must say re-entrancy, NOT send the reader hunting a second thread or a
+        // shared instance — the stack alone cannot tell those apart, so the message must.
+        Assert.Contains("re-entrant", caught!.Message);
+        Assert.Contains("same thread", caught.Message);
+        Assert.DoesNotContain("started on thread", caught.Message);
+    }
+
+    [Fact]
+    public async Task A_cross_thread_conflict_does_not_claim_to_know_which_misuse_it_is()
+    {
+        using var entered = new SemaphoreSlim(0);
+        using var release = new SemaphoreSlim(0);
+
+        var pipeline = BuildPipeline()
+            .ResolveAndRegister<IBlockingCommand>(c => { c.Entered = entered; c.Release = release; });
+
+        var firstRun = Task.Run(() => pipeline.RunAsync(CancellationToken.None));
+        Assert.True(await entered.WaitAsync(TimeSpan.FromSeconds(10)), "first run never reached Build");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => pipeline.Register(new BlockingCommand()));
+
+        // Both explanations are named, because the losing caller's stack cannot distinguish them.
+        Assert.Contains("two flows sharing one instance", ex.Message);
+        Assert.Contains("never awaited", ex.Message);
+        Assert.Contains("only the call that lost the race", ex.Message);
+
+        release.Release();
+        await firstRun;
+    }
+
     [Fact]
     public async Task Sequential_reuse_of_one_instance_still_works()
     {
