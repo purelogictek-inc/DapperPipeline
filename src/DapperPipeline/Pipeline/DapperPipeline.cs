@@ -187,6 +187,7 @@ internal sealed class DapperPipeline(
 
         // 3. For each registered command: pre-check, scope, build, process
         var includedCommands = new List<(string Name, IQueryCommand Command)>(_commands.Count);
+        var readerGroups = new List<CommandReaders>(_commands.Count);
         foreach (var (name, cmd) in _commands)
         {
             if (!cmd.ShouldInclude(out var reason))
@@ -205,6 +206,7 @@ internal sealed class DapperPipeline(
             if (queryBuilder.HasQuery)
                 queryBuilder.EnsureStatementSeparator(dialect.StatementSeparator);
 
+            var scopeIndex = _scopeIndex;
             queryBuilder.BeginCommandScope(_scopeIndex++);
             cmd.Build(queryBuilder, _state);
 
@@ -214,6 +216,15 @@ internal sealed class DapperPipeline(
 
             cmd.Process(processor);
             includedCommands.Add((name, cmd));
+
+            // Drain THIS command's readers while we still know whose they are. The drain is
+            // destructive — which is what makes per-command grouping free — so what comes back
+            // is exactly the scopes this command's Process just registered. Draining once per
+            // batch instead (as before) is the moment command identity was being thrown away,
+            // leaving a flat list that could only ever be paired by position.
+            var commandReaders = processor.Readers;
+            if (commandReaders.Count > 0)
+                readerGroups.Add(new CommandReaders(name, scopeIndex, commandReaders));
         }
 
         // 4. Drop unused parameters
@@ -228,11 +239,10 @@ internal sealed class DapperPipeline(
         if (_context.LogSql && logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("SQL:\n{Sql}", queryBuilder.ToDebug());
 
-        // 5. Snapshot the result readers ONCE per run. processor.Readers is destructive — fetching
-        // it clears the scopes — so fetching it per attempt inside the retry loop meant a retried
-        // attempt saw no readers, took the ExecuteAsync branch, and silently skipped every
-        // OnResult callback.
-        var readers = processor.NeedsToProcess ? processor.Readers : null;
+        // 5. The reader groups were drained during the build loop above — once per run, before any
+        // attempt. That ordering is load-bearing: processor.Readers is destructive, so draining it
+        // per attempt inside the retry loop meant a retried attempt saw no readers, took the
+        // ExecuteAsync branch, and silently skipped every OnResult callback.
 
         // 6. Run behaviors → execute
         try
@@ -242,7 +252,7 @@ internal sealed class DapperPipeline(
                 CommandNames = includedCommands.Select(c => c.Name).ToList(),
                 SkippedCommandNames = _skippedCommands.AsReadOnly()
             };
-            await RunWithBehaviorsAsync(context, readers, token).ConfigureAwait(false);
+            await RunWithBehaviorsAsync(context, readerGroups, token).ConfigureAwait(false);
         }
         finally
         {
@@ -259,12 +269,12 @@ internal sealed class DapperPipeline(
 
     private async Task RunWithBehaviorsAsync(
         PipelineContext context,
-        List<Action<SqlMapper.GridReader>>? readers,
+        IReadOnlyList<CommandReaders> readerGroups,
         CancellationToken token)
     {
         var behaviors = services.GetServices<IPipelineBehavior>().ToList();
 
-        var execution = () => ExecuteCoreAsync(readers, token);
+        var execution = () => ExecuteCoreAsync(readerGroups, token);
 
         for (var i = behaviors.Count - 1; i >= 0; i--)
         {
@@ -276,7 +286,7 @@ internal sealed class DapperPipeline(
         await execution().ConfigureAwait(false);
     }
 
-    private async Task ExecuteCoreAsync(List<Action<SqlMapper.GridReader>>? readers, CancellationToken token)
+    private async Task ExecuteCoreAsync(IReadOnlyList<CommandReaders> readerGroups, CancellationToken token)
     {
         try
         {
@@ -286,7 +296,7 @@ internal sealed class DapperPipeline(
                 await using var conn = dialect.CreateConnection();
                 if (conn.State != ConnectionState.Open)
                     await conn.OpenAsync(ct).ConfigureAwait(false);
-                await ExecTransactionAsync(conn, readers, ct).ConfigureAwait(false);
+                await ExecTransactionAsync(conn, readerGroups, ct).ConfigureAwait(false);
             }, token).ConfigureAwait(false);
 
             _context.LogSuccess();
@@ -309,6 +319,34 @@ internal sealed class DapperPipeline(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Runs one reader and, if it fails, says whose it was. Before grouping, a mid-batch reader
+    /// failure surfaced as a bare Dapper materialization error and the caller had to work out
+    /// which command it belonged to by recognising the column names in the message.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PipelineException"/> passes through untouched: it is the documented way a command
+    /// reports a domain error from its own result set (<c>BaseQueryCommand&lt;T&gt;.EmitError</c>),
+    /// and consumers catch it by type. Cancellation passes through for the same reason.
+    /// </remarks>
+    private static void InvokeReader(CommandReaders group, int index, SqlMapper.GridReader gr)
+    {
+        try
+        {
+            group.Readers[index](gr);
+        }
+        catch (Exception ex) when (ex is not PipelineException and not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"Reader {index + 1} of {group.Readers.Count} for command '{group.Name}' " +
+                $"(command {group.ScopeIndex} of the batch) failed while reading its result set: " +
+                $"{ex.Message} — if the columns named above belong to a different query, this " +
+                $"command's readers are misaligned with the batch's result sets, which happens " +
+                $"when some command emits a different number of row-returning statements than it " +
+                $"registers readers.", ex);
+        }
+    }
 
     /// <summary>
     /// Configuration and registration while a run is in flight can only mean a second thread —
@@ -382,20 +420,20 @@ internal sealed class DapperPipeline(
 
     private async Task ExecTransactionAsync(
         DbConnection conn,
-        List<Action<SqlMapper.GridReader>>? readers,
+        IReadOnlyList<CommandReaders> readerGroups,
         CancellationToken token)
     {
         // No BEGIN, no COMMIT, no rollback — just the statements. Saves two round-trips.
         if (!UseTransaction)
         {
-            await ExecCoreAsync(conn, transaction: null, readers, token).ConfigureAwait(false);
+            await ExecCoreAsync(conn, transaction: null, readerGroups, token).ConfigureAwait(false);
             return;
         }
 
         await using var tx = await conn.BeginTransactionAsync(_context.Level, token).ConfigureAwait(false);
         try
         {
-            await ExecCoreAsync(conn, tx, readers, token).ConfigureAwait(false);
+            await ExecCoreAsync(conn, tx, readerGroups, token).ConfigureAwait(false);
             await tx.CommitAsync(token).ConfigureAwait(false);
         }
         catch
@@ -414,13 +452,17 @@ internal sealed class DapperPipeline(
     private async Task ExecCoreAsync(
         DbConnection conn,
         DbTransaction? transaction,
-        List<Action<SqlMapper.GridReader>>? readers,
+        IReadOnlyList<CommandReaders> readerGroups,
         CancellationToken token)
     {
-        if (readers is { Count: > 0 })
+        var total = 0;
+        foreach (var g in readerGroups) total += g.Readers.Count;
+
+        if (total > 0)
         {
-            var count = readers.Count;
-            var counter = 0;
+            var consumed = 0;
+            CommandReaders? starvedCommand = null;
+            var starvedIndex = 0;
 
             await using var gr = await conn.QueryMultipleAsync(new CommandDefinition(
                 commandText: queryBuilder.Sql,
@@ -430,30 +472,47 @@ internal sealed class DapperPipeline(
                 commandType: CommandType.Text,
                 cancellationToken: token)).ConfigureAwait(false);
 
-            while (!gr.IsConsumed && counter < count)
-                readers[counter++](gr);
+            // Readers are still paired to result sets POSITIONALLY — the wire gives us no
+            // attribution to check against. What the grouping adds is knowing WHOSE reader each
+            // one is, so a failure names the command instead of leaving the caller to infer it
+            // from column names in a Dapper error.
+            foreach (var group in readerGroups)
+            {
+                for (var i = 0; i < group.Readers.Count; i++)
+                {
+                    if (gr.IsConsumed)
+                    {
+                        starvedCommand = group;
+                        starvedIndex = i;
+                        break;
+                    }
 
-            // Readers are paired to result sets POSITIONALLY across the whole batch, which assumes
-            // every command yields exactly as many result sets as it registered readers. Break that
-            // assumption and each later command's reader is handed somebody else's result set —
-            // an exception when the shapes disagree, and the wrong rows in silence when they don't.
-            // Totals are the part we can actually check, so check them.
-            if (counter < count)
+                    InvokeReader(group, i, gr);
+                    consumed++;
+                }
+
+                if (starvedCommand != null) break;
+            }
+
+            if (starvedCommand != null)
                 throw new InvalidOperationException(
-                    $"The batch returned fewer result sets than it has result readers " +
-                    $"({counter} consumed, {count} registered), so {count - counter} command(s) " +
-                    $"never received their rows and their OnResult callbacks did not fire. A " +
-                    $"command's Build must emit exactly as many row-returning statements as its " +
-                    $"Process registers readers — check any statement that returns rows only " +
-                    $"conditionally.");
+                    $"The batch ran out of result sets while reading command " +
+                    $"'{starvedCommand.Name}' (command {starvedCommand.ScopeIndex} of the batch): " +
+                    $"its reader {starvedIndex + 1} of {starvedCommand.Readers.Count} had no result " +
+                    $"set to read, and neither did any reader after it. {consumed} of {total} " +
+                    $"reader(s) across the batch were satisfied, so the OnResult callbacks for the " +
+                    $"rest never fired. A command's Build must emit exactly as many row-returning " +
+                    $"statements as its Process registers readers — check any statement that " +
+                    $"returns rows only conditionally.");
 
             if (!gr.IsConsumed)
                 throw new InvalidOperationException(
-                    $"The batch returned more result sets than its {count} result reader(s) " +
-                    $"consumed. Extra result sets shift every later command's reader onto the " +
-                    $"wrong result set, which returns another command's rows silently whenever " +
-                    $"the shapes happen to be compatible. A command's Build must emit exactly as " +
-                    $"many row-returning statements as its Process registers readers.");
+                    $"The batch returned more result sets than its {total} result reader(s) " +
+                    $"consumed, across commands [{string.Join(", ", readerGroups.Select(g => g.Name))}]. " +
+                    $"Extra result sets shift every later command's reader onto the wrong result " +
+                    $"set, which returns another command's rows silently whenever the shapes " +
+                    $"happen to be compatible. A command's Build must emit exactly as many " +
+                    $"row-returning statements as its Process registers readers.");
         }
         else
         {
@@ -467,6 +526,24 @@ internal sealed class DapperPipeline(
         }
     }
 }
+
+/// <summary>
+/// One command's result readers, kept with the identity of the command that registered them.
+/// </summary>
+/// <remarks>
+/// The pipeline builds and processes commands one at a time, so it knows exactly whose readers
+/// are whose — it just used to throw that away by draining them into a single flat list. Keeping
+/// the grouping costs nothing (the drain is per-command instead of per-batch) and is what lets a
+/// misalignment name the command responsible instead of reporting a batch total.
+/// </remarks>
+/// <param name="Name">The command's <see cref="IQueryCommand.Name"/>.</param>
+/// <param name="ScopeIndex">1-based position among the batch's included commands — the same
+/// number that prefixes its parameters (<c>@p003_*</c>), so the message and the SQL agree.</param>
+/// <param name="Readers">The readers this command's <c>Process</c> registered, in order.</param>
+internal sealed record CommandReaders(
+    string Name,
+    int ScopeIndex,
+    IReadOnlyList<Action<SqlMapper.GridReader>> Readers);
 
 /// <summary>
 /// Internal marker used for pre-run result-binding validation.

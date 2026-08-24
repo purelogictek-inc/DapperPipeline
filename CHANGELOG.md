@@ -3,6 +3,35 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
+## Unreleased
+
+### 🔎 Improved — a failing result reader now names the command it belongs to
+
+Readers are now kept grouped by the command that registered them, instead of being flattened into
+one anonymous per-batch list. **No API change, no extra SQL, no measurable cost** — the pipeline
+already builds and processes commands one at a time, so it always knew whose readers were whose;
+it was throwing that away by draining them once per batch instead of once per command.
+
+What changes is the diagnosis. Before, a mid-batch reader failure surfaced as a bare Dapper
+materialization error, and working out which command owned it meant recognising column names in
+the message — which is exactly the reverse-engineering that a field report of this failure had to
+do. Now:
+
+```
+Reader 1 of 1 for command 'LoadScoringWeightsCommand' (command 2 of the batch) failed while
+reading its result set: … — if the columns named above belong to a different query, this
+command's readers are misaligned with the batch's result sets …
+```
+
+The starved-reader message from 1.10.0 gained the same attribution: it now names the command that
+ran out of result sets and which of its readers went unfed, rather than reporting a batch total.
+The original exception is preserved as `InnerException`, and `PipelineException` raised by a
+command's own `EmitError` passes through unwrapped so consumers can still catch it by type.
+
+This is the second of three layers. 1.10.0 shipped batch **totals** checking; this adds per-command
+**attribution**; per-command result-set **markers** — the only layer that can catch mismatches whose
+totals happen to cancel out — remain future work, pending a benchmark of their cost.
+
 ## 1.10.0
 
 Three ways a pipeline could lose or cross your results without telling you — all found while
