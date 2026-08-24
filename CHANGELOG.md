@@ -3,7 +3,13 @@
 Notable changes to DapperPipeline. Versions are the NuGet package versions
 (`PureLogicTek.DapperPipeline` and the three dialect satellites, released together).
 
-## Unreleased
+## 1.11.0
+
+Finishes what 1.10.0 started. Where 1.10.0 could tell you a batch's reader and result-set *totals*
+disagreed, 1.11.0 verifies each command's results are its own and names the command at fault — and
+measures what that costs (nothing at one command; ~3% of the round-trip it saves beyond that).
+The story behind both releases is written up in
+[documents/alignment-investigation.md](documents/alignment-investigation.md).
 
 ### 🛡️ New — the pipeline verifies that each command's results are actually its own
 

@@ -10,7 +10,7 @@
   <!-- Shared package identity for all packable projects (core + dialect satellites).
        Inert for non-packable projects (tests, benchmarks). -->
   <PropertyGroup Label="Packaging">
-    <Version>1.10.0</Version>
+    <Version>1.11.0</Version>
     <PackageReleaseNotes>
 New: x.SqlParam() and x.SqlIdentifier() -- the two doors a raw string can take into SQL, now discoverable in IntelliSense with no extra using. Sql.Text is deprecated in favour of x.SqlParam() (warning; removed in 2.0). Sql.Identifier is unchanged.
 
